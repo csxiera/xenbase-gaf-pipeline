@@ -21,7 +21,7 @@ def main():
     # folder paths
     global input_dir, gaf_dir, ncbi_map_dir, output_dir
     input_dir = os.path.join(HOME, "input-files")
-    gaf_dir = os.path.join(input_dir, "gaf")
+    gaf_dir = os.path.join(input_dir, "gafs")
     ncbi_map_dir = os.path.join(input_dir, "ncbi-map")
     output_dir = os.path.join(HOME, "output-files")
     
@@ -42,10 +42,10 @@ def main():
     ortho_uniprot_map = {}              # key = ortholog uniprot id: contains ncbi id & go ids
     ortho_ncbi_to_uniprot = {}          # key = ortholog ncbi id: contains uniprot id
 
-    ortho_species_list = ["Human", "Mouse"]
+    ortho_species_list = ["Human", "Mouse", "Rat", "Chicken", "Zebrafish", "Drosophila"]
     # FIX!!: want to pass this info in maybe??
-    xenopus_gaf = os.path.join(gaf_dir, 'Xenopus.GOA.Extracted.2025-07-17.gaf')
-    ortho_gaf = os.path.join(gaf_dir, 'Human.GOA.Currated.2025-07-17.gaf')
+    xenopus_gaf = os.path.join(gaf_dir, 'Xenopus.GOA.TEST.gaf')
+    ortho_gaf = os.path.join(gaf_dir, 'Human.GOA.TEST.gaf')
     ortho_ncbi_mapping = os.path.join(ncbi_map_dir, 'Human_NCBI_Mapping.tsv')
 
     # ---------------------------- Data Processing ----------------------------
@@ -70,7 +70,7 @@ def main():
     else:
         # Modify GAF (from EBI) with xenbase gene information ONLY (no ortholog uniprots in with/from col)
         populate_maps(xenopus_gaf, 'Xenopus')
-        #create_xenbase_gaf(xenopus_gaf, output_dir)
+        create_xenbase_gaf(xenopus_gaf, output_dir)
 
     print("\nFinished.\n")
 
@@ -287,7 +287,7 @@ def create_xenbase_gaf(gaf_in, output_dir):
 # FUNCTION: Modify Xenbase GAF to include ortholog uniports in with/from (when present), and create new Xenbase GAF that only includes annotations with orthologs
 def create_xenbase_w_ortho_gaf(gaf_in, output_dir, ortho_species):
     def ortho_wrapper(fields):
-        match_to_ortho(fields, unfiltered=xen_w_ortho_temp, filtered=ortho_filtered_temp, ortho_species=ortho_species)
+        match_to_ortho(fields, unfiltered=xen_w_ortho_temp, filtered=ortho_filtered_temp, ortho_species=ortho_species, check_go_id=match_go_ids)
 
     def xenbase_wrapper_unfiltered(fields):
         match_to_xenbase(fields, matched=xenbase_w_ortho)
@@ -299,6 +299,7 @@ def create_xenbase_w_ortho_gaf(gaf_in, output_dir, ortho_species):
     ortho_filtered_temp = os.path.join(output_dir, f'Xenopus_{ortho_species}_Filtered.tmp')
     xenbase_w_ortho = os.path.join(output_dir, f'Xenbase_w_{ortho_species}.gaf')
     xenbase_ortho_filtered = os.path.join(output_dir, f'Xenbase_{ortho_species}_Filtered.gaf')
+    match_go_ids = True     # Set to True to ensure ortholog uniprot match is associated with same GO ID as xenopus annotation
 
     # Remove intermediate/final output files if they already exist (for clean write)
     for file in [xen_w_ortho_temp, ortho_filtered_temp, xenbase_w_ortho, xenbase_ortho_filtered]:
@@ -425,7 +426,7 @@ def match_to_xenbase(fields, matched, provenance=None, unmatched=None):
 # Unfiltered output will contain ALL annotations from original gaf, only subbing with/from IF ortholog uniprot found
 # Filtered output will ONLY contain annotations where an ortholog uniprot was found
 # Ortholog GAF info stored in ortho_uniprot_map and ortho_ncbi_to_uniprot map
-def match_to_ortho(fields, unfiltered, filtered, ortho_species):
+def match_to_ortho(fields, unfiltered, filtered, ortho_species, check_go_id=False):
     uniprot_id = fields["uniprot_id"]
     go_id = fields["go_id"]
     valid_uniprots = set()
@@ -437,9 +438,12 @@ def match_to_ortho(fields, unfiltered, filtered, ortho_species):
             if ortho_ncbi and ortho_ncbi in ortho_ncbi_to_uniprot:
                 ortho_uniprots = ortho_ncbi_to_uniprot[ortho_ncbi]
                 for ortho_uniprot in ortho_uniprots:
-                    ortho_go_ids = ortho_uniprot_map[ortho_uniprot]
-                    if go_id in ortho_go_ids:
+                    if not check_go_id:
                         valid_uniprots.add(ortho_uniprot)
+                    else:
+                        ortho_go_ids = ortho_uniprot_map.get(ortho_uniprot, set())
+                        if go_id in ortho_go_ids:
+                            valid_uniprots.add(ortho_uniprot)
 
     if valid_uniprots:
         with_from = "|".join(sorted(valid_uniprots))
