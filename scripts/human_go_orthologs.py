@@ -5,12 +5,12 @@ import gzip
 from datetime import datetime
 
 HOME = os.path.expanduser("~")
-target_dir = os.path.join(HOME, "tmp")
+target_dir = os.path.join(HOME, "xenbase-gaf-pipeline/input-files")
 os.chdir(target_dir)
 
 # Combines code from jupyter notebook into 4 general functions
 def main():
-  #step_1()
+  step_1()
   step_2()
   #step_3()
   #step_4()
@@ -29,7 +29,7 @@ def step_1():
     return bool(re.search(r"UniProtKB", text))
 
   # Load the human GO annotation file and filter by evidence codes
-  goa_human = pd.read_csv("goa_human.gaf.gz", sep="\t", header=None, comment="!", compression="gzip",low_memory=False)
+  goa_human = pd.read_csv("gafs/Human.GOA.Extracted.2025-07-18.gaf", sep="\t", header=None, comment="!", low_memory=False)
   goa_human = goa_human[goa_human[6].isin(allowed_evidence_codes)]  # Filter by evidence codes
 
   # Add the new filtering step here
@@ -41,7 +41,7 @@ def step_1():
   print(f"Number of unique UniProtKB accessions (Human): {len(human_uniprots)}")
 
   # Load the UniProt to GeneID mapping file
-  idmapping = pd.read_csv("HUMAN_9606_idmapping.NCBI.tsv", sep="\t", header=None)
+  idmapping = pd.read_csv("ncbi-map/Human_NCBI_Mapping.tsv", sep="\t", header=None)
 
   # Create a dictionary mapping UniProtKB accessions to GeneIDs
   uniprot_to_geneid = dict(zip(idmapping[0], idmapping[2]))
@@ -52,7 +52,7 @@ def step_1():
   print(f"Number of GO annotations with GeneIDs (Human): {goa_human['GeneID'].notna().sum()}")
 
   # Load the Xenopus ortholog mapping file
-  xenopus_orthologs = pd.read_csv("xenopus_orthologs.tsv", sep="\t")
+  xenopus_orthologs = pd.read_csv("ncbi-map/Xenopus_NCBI_Orthologs.tsv", sep="\t")
 
   # Extract the human GeneIDs that have a Xenopus ortholog
   human_geneids_with_orthologs = xenopus_orthologs["human"].dropna().astype(int).unique()
@@ -123,7 +123,7 @@ def step_2():
   ]
 
   genepage_df = pd.read_csv(
-      "XenbaseGenepageToGeneIdMapping_chd.txt",
+      "Xenbase_Genepage_To_GeneId.txt",
       sep="\t",
       header=None,
       names=column_names,
@@ -146,7 +146,7 @@ def step_2():
   # Load Xenbase GPI file (gene ID → symbol)
   xbgene_info = {}
 
-  with gzip.open("xenbase.gpi.gz", "rt", encoding="latin-1") as f:
+  with open("Xenbase.gpi", "rt", encoding="latin-1") as f:
       count = 0
       for line in f:
           if line.startswith("!"):
@@ -183,6 +183,9 @@ def step_2():
       xbgene_curie = f"Xenbase:{xbgene}"
 
       gene_info = xbgene_info.get(xbgene)
+
+      if row[2] == 'A1CF':
+         print(f'Uniprot: {row[1]}, symbol: {row[2]}')
       if gene_info is None:
           skipped_missing_gpi += 1
           continue
@@ -218,7 +221,7 @@ def step_2():
       "DB", "DB_Object_ID", "DB_Object_Symbol", "Qualifier", "GO_ID", "DB_Reference",
       "Evidence_Code", "With_From", "Aspect", "DB_Object_Name", "Synonym",
       "DB_Object_Type", "Taxon", "Date", "Assigned_By"
-  ]).drop_duplicates(subset=["DB_Object_ID", "GO_ID"])
+  ]).drop_duplicates(subset=["DB_Object_ID", "GO_ID", "With_From"])
 
   # Save to file
   df_gaf.to_csv("xenbase_from_human.gaf", sep="\t", header=False, index=False, quoting=3)
@@ -242,7 +245,7 @@ def step_3():
       "x_laevis_S_gene_id", "x_laevis_S_symbol"
   ]
   genepage_df = pd.read_csv(
-      "XenbaseGenepageToGeneIdMapping_chd.txt",
+      "Xenbase_Genepage_To_GeneId.txt",
       sep="\t",
       header=None,
       names=column_names,
@@ -268,12 +271,11 @@ def step_3():
 
   # --- Load species-specific Xenbase GAF ---
   gaf = pd.read_csv(
-      "xenbase.gaf.gz",
+      "gafs/Xenbase.gaf",
       sep="\t",
       comment="!",
       header=None,
       names=GAF_COLS,
-      compression="gzip",
       dtype=str
   )
 
@@ -339,7 +341,7 @@ def step_4():
       "x_laevis_S_gene_id", "x_laevis_S_symbol"
   ]
   genepage_df = pd.read_csv(
-      "XenbaseGenepageToGeneIdMapping_chd.txt",
+      "Xenbase_Genepage_To_GeneId.txt",
       sep="\t",
       header=None,
       names=column_names,
