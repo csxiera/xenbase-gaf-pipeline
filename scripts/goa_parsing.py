@@ -60,10 +60,12 @@ def main():
     xenopus_gaf = os.path.join(gaf_dir, f'Xenopus.{gaf_suffix}')
     populate_maps(xenopus_gaf)
 
-    # Create Xenbase GAF from GPI & add in ortholog annotations
+    # Create Xenbase GAF from GPI & compress
     create_xenbase_gaf(xenopus_gaf, output_dir)
     xenbase_gaf = os.path.join(output_dir, "Xenbase.gaf")
+    gzip_file(xenbase_gaf)
 
+    # Create Xenbase with Ortholog GAFs for each species & compress
     for species in ortho_species_list:
         ortho_uniprot_map = {}
         ortho_ncbi_map = {}
@@ -81,10 +83,11 @@ def main():
         # Map ortholog annotations to Xenbase gene IDs and sub Xenbase info into ortholog GAF
         xen_from_ortho = modify_ortho_annotations(filtered_ortho_gaf, output_dir, species)
 
-        # Combine ortholog annotations with Xenbase GAF
+        # Combine ortholog annotations with Xenbase GAF & compress
         # CHECK!!: Do I need to filter out Xenbase annotations that don't have a match to the given ortholog species?
-        xen_with_ortho = os.path.join(output_dir, f"Xenbase_w_{species}.gaf")
-        combine_annotations(xenbase_gaf, xen_from_ortho, xen_with_ortho)
+        xen_w_ortho = os.path.join(output_dir, f"Xenbase_w_{species}.gaf")
+        combine_annotations(xenbase_gaf, xen_from_ortho, xen_w_ortho)
+        gzip_file(xen_w_ortho)
 
     # Remove filtered gafs (.tmp) from input goa gaf folder
     remove_tmp_files(gaf_dir)
@@ -111,6 +114,10 @@ def main():
     xen_w_ortho = f'{output_dir}/Xenbase_w_Orthologs.gaf'
     combine_annotations(xenbase_gaf, master_ortho_gaf, xen_w_ortho)
     clean(xen_w_ortho, header_lines = 26, dedup=False, sort=True, sort_cols = [2,6,4])
+
+    # Compress final files
+    gzip_file(xen_w_ortho)
+    gzip_file(master_ortho_gaf)
 
     print("Finished!\n")
 
@@ -635,6 +642,13 @@ def remove_tmp_files(folder_path):
                 print(f"Deleted: {file_path}")
             except Exception as e:
                 print(f"Failed to delete {file_path}: {e}")
+
+# FUNCTION: Compress final outputs into .gz file
+def gzip_file(input_path):
+    output_path = f'{input_path}.gz'
+    with open(input_path, 'rb') as f_in:
+        with gzip.open(output_path, 'wb') as f_out:
+            shutil.copyfileobj(f_in, f_out)
 
 main()
 
