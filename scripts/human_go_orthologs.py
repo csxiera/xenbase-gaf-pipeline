@@ -5,15 +5,21 @@ import gzip
 from datetime import datetime
 
 HOME = os.path.expanduser("~")
-target_dir = os.path.join(HOME, "xenbase-gaf-pipeline/input-files")
-os.chdir(target_dir)
+input_dir = os.path.join(HOME, "xenbase-gaf-pipeline/input-files")
+os.chdir(input_dir)
+output_dir = os.path.join(HOME, "xenbase-gaf-pipeline/output-files/ipynb-output")
 
-# Combines code from jupyter notebook into 4 general functions
+# Combines code from .ipynb collab script (Author: Malcolm Fisher) into 4 general functions
 def main():
   step_1()
   step_2()
   #step_3()
   #step_4()
+
+  # Sort for comparison with goa_parsing.py output
+  xb_from_human_path = os.path.join(output_dir, "xenbase_from_human.gaf")
+  clean(xb_from_human_path, header_lines=0, dedup=False, sort=True, sort_cols=[2,4])
+
 
 # Filters human gaf to only include experimentally based evidence codes with xenopus orthologs
 # Creates goa_human_with_orthologs_xenbase.tsv (used in step_2) (human gaf with mapped xenbase ids)
@@ -29,7 +35,7 @@ def step_1():
     return bool(re.search(r"UniProtKB", text))
 
   # Load the human GO annotation file and filter by evidence codes
-  goa_human = pd.read_csv("gafs/Human.GOA.Extracted.2025-07-18.gaf", sep="\t", header=None, comment="!", low_memory=False)
+  goa_human = pd.read_csv("goa-gafs/Human.GOA.Extracted.2025-07-18.gaf", sep="\t", header=None, comment="!", low_memory=False)
   goa_human = goa_human[goa_human[6].isin(allowed_evidence_codes)]  # Filter by evidence codes
 
   # Add the new filtering step here
@@ -41,7 +47,7 @@ def step_1():
   print(f"Number of unique UniProtKB accessions (Human): {len(human_uniprots)}")
 
   # Load the UniProt to GeneID mapping file
-  idmapping = pd.read_csv("ncbi-map/Human_NCBI_Mapping.tsv", sep="\t", header=None)
+  idmapping = pd.read_csv("ncbi-maps/Human_NCBI_Mapping.tsv", sep="\t", header=None)
 
   # Create a dictionary mapping UniProtKB accessions to GeneIDs
   uniprot_to_geneid = dict(zip(idmapping[0], idmapping[2]))
@@ -52,7 +58,7 @@ def step_1():
   print(f"Number of GO annotations with GeneIDs (Human): {goa_human['GeneID'].notna().sum()}")
 
   # Load the Xenopus ortholog mapping file
-  xenopus_orthologs = pd.read_csv("ncbi-map/Xenopus_NCBI_Orthologs.tsv", sep="\t")
+  xenopus_orthologs = pd.read_csv("ncbi-maps/Xenopus_NCBI_Orthologs.tsv", sep="\t")
 
   # Extract the human GeneIDs that have a Xenopus ortholog
   human_geneids_with_orthologs = xenopus_orthologs["human"].dropna().astype(int).unique()
@@ -70,7 +76,8 @@ def step_1():
       "Annotation Extension", "Gene Product ID"
   ]
 
-  with open("goa_human_with_orthologs.tsv", "w") as f:
+  goa_human_path = os.path.join(output_dir, "goa_human_with_orthologs.tsv")
+  with open(goa_human_path, "w") as f:
       f.write("\t".join(header) + "\n")
       goa_human_with_orthologs.to_csv(f, sep="\t", index=False, header=False)
 
@@ -89,11 +96,12 @@ def step_1():
   # Save the filtered GO annotations with Xenbase IDs to a file, this has
   # additonal columns 18 and 19 containing the human Entrez ID and Xenbase
   # Genepage ID respectively.
-  goa_human_with_orthologs.to_csv("goa_human_with_orthologs_xenbase.tsv", sep="\t", index=False, header=False)
+  go_human_w_xb_path = os.path.join(output_dir, "goa_human_with_orthologs_xenbase.tsv")
+  goa_human_with_orthologs.to_csv(go_human_w_xb_path, sep="\t", index=False, header=False)
 
   print("Human GO annotations with Xenopus orthologs and Xenbase IDs saved to goa_human_with_orthologs_xenbase.tsv")
 
-# Builds x.trop gaf with human ortholog info
+# Builds human ortholog gaf with x.trop info subbed in
 def step_2():
   # Constants
   PLACEHOLDER_REF = "GO_REF:PLACEHOLDER"
@@ -103,7 +111,8 @@ def step_2():
   DATE = datetime.now().strftime("%Y%m%d")
 
   # Load filtered annotations
-  goa_human = pd.read_csv("goa_human_with_orthologs_xenbase.tsv", sep="\t", header=None)
+  go_human_w_xb = os.path.join(output_dir, "goa_human_with_orthologs_xenbase.tsv")
+  goa_human = pd.read_csv(go_human_w_xb, sep="\t", header=None)
   goa_human.columns = list(range(goa_human.shape[1]))
 
   print(f"✅ Loaded GOA with {goa_human.shape[0]} annotations")
@@ -123,7 +132,7 @@ def step_2():
   ]
 
   genepage_df = pd.read_csv(
-      "Xenbase_Genepage_To_GeneId.txt",
+      "xenbase-files/Xenbase_Genepage_To_GeneId.txt",
       sep="\t",
       header=None,
       names=column_names,
@@ -146,7 +155,7 @@ def step_2():
   # Load Xenbase GPI file (gene ID → symbol)
   xbgene_info = {}
 
-  with open("Xenbase.gpi", "rt", encoding="latin-1") as f:
+  with open("xenbase-files/Xenbase.gpi", "rt", encoding="latin-1") as f:
       count = 0
       for line in f:
           if line.startswith("!"):
@@ -183,9 +192,6 @@ def step_2():
       xbgene_curie = f"Xenbase:{xbgene}"
 
       gene_info = xbgene_info.get(xbgene)
-
-      if row[2] == 'A1CF':
-         print(f'Uniprot: {row[1]}, symbol: {row[2]}')
       if gene_info is None:
           skipped_missing_gpi += 1
           continue
@@ -224,7 +230,8 @@ def step_2():
   ]).drop_duplicates(subset=["DB_Object_ID", "GO_ID", "With_From"])
 
   # Save to file
-  df_gaf.to_csv("xenbase_from_human.gaf", sep="\t", header=False, index=False, quoting=3)
+  xb_from_human_path = os.path.join(output_dir, "xenbase_from_human.gaf")
+  df_gaf.to_csv(xb_from_human_path, sep="\t", header=False, index=False, quoting=3)
   print(f"✅ Xenopus GAF written with {len(df_gaf)} non-redundant entries.")
 
 # Collapses gaf to genus level (replaces gene ids with umbrella ids)
@@ -245,7 +252,7 @@ def step_3():
       "x_laevis_S_gene_id", "x_laevis_S_symbol"
   ]
   genepage_df = pd.read_csv(
-      "Xenbase_Genepage_To_GeneId.txt",
+      "xenbase-files/Xenbase_Genepage_To_GeneId.txt",
       sep="\t",
       header=None,
       names=column_names,
@@ -271,7 +278,7 @@ def step_3():
 
   # --- Load species-specific Xenbase GAF ---
   gaf = pd.read_csv(
-      "gafs/Xenbase.gaf",
+      "xenbase-files/Xenbase.gaf",
       sep="\t",
       comment="!",
       header=None,
@@ -302,7 +309,8 @@ def step_3():
   df_umbrella_gaf = mapped[GAF_COLS].drop_duplicates(subset=["DB_Object_ID", "GO_ID"])
 
   # --- Save output ---
-  df_umbrella_gaf.to_csv("xenbase_species_collapsed_to_genepage.gaf", sep="\t", header=False, index=False, quoting=3)
+  umbrella_path = os.path.join(output_dir, "xenbase_species_collapsed_to_genepage.gaf")
+  df_umbrella_gaf.to_csv(umbrella_path, sep="\t", header=False, index=False, quoting=3)
   print(f"✅ Collapsed species-specific GAF written with {len(df_umbrella_gaf)} umbrella-level annotations.")
   
   # --- Debug samples to check why mapping fails ---
@@ -341,7 +349,7 @@ def step_4():
       "x_laevis_S_gene_id", "x_laevis_S_symbol"
   ]
   genepage_df = pd.read_csv(
-      "Xenbase_Genepage_To_GeneId.txt",
+      "xenbase-files/Xenbase_Genepage_To_GeneId.txt",
       sep="\t",
       header=None,
       names=column_names,
@@ -365,8 +373,10 @@ def step_4():
   print(f"✅ Loaded mapping for {len(gene_to_umbrella)} gene IDs to umbrella IDs")
 
   # --- Load both GAFs ---
-  gaf_human = pd.read_csv("xenbase_from_human.gaf", sep="\t", header=None, names=GAF_COLS, dtype=str)
-  gaf_species = pd.read_csv("xenbase_species_collapsed_to_genepage.gaf", sep="\t", header=None, names=GAF_COLS, dtype=str)
+  xb_from_human_path = os.path.join(output_dir, "xenbase_from_human.gaf")
+  gaf_human = pd.read_csv(xb_from_human_path, sep="\t", header=None, names=GAF_COLS, dtype=str)
+  umbrella_path = os.path.join(output_dir, "xenbase_species_collapsed_to_genepage.gaf")
+  gaf_species = pd.read_csv(umbrella_path, sep="\t", header=None, names=GAF_COLS, dtype=str)
 
   print(f"✅ Loaded {len(gaf_human)} human-derived annotations")
   print(f"✅ Loaded {len(gaf_species)} species-specific umbrella annotations")
@@ -394,7 +404,65 @@ def step_4():
       "DB_Object_ID", "GO_ID", "Evidence_Code", "Qualifier", "With_From"
   ])
   # --- Write final GAF ---
-  combined.to_csv("xenbase_final_genepage_merged.gaf", sep="\t", header=False, index=False, quoting=3)
+  final_gaf_path = os.path.join(output_dir, "xenbase_final_genepage_merged.gaf")
+  combined.to_csv(final_gaf_path, sep="\t", header=False, index=False, quoting=3)
   print(f"✅ Final merged genepage-level GAF written with {len(combined)} annotations.")
+
+def clean(filepath, header_lines = 0, dedup=True, dedup_cols=None, sort=False, sort_cols = None):
+    filename = os.path.basename(filepath)
+
+    def deduplicate(lines, dedup_cols):
+        seen = set()
+        unique = []
+        removed_count = 0
+
+        for line in lines:
+            if line.startswith('!'):
+                unique.append(line)
+                continue
+
+            cols = line.split('\t')
+            key = tuple(cols[i] for i in dedup_cols if i < len(cols)) if dedup_cols else line
+
+            if key not in seen:
+                unique.append(line)
+                seen.add(key)
+            else:
+                removed_count += 1
+
+        print(f"{removed_count} duplicate lines removed")
+        return unique
+            
+    def sort(lines, sort_cols):
+        def sort_key(line):
+            cols = line.split('\t')
+            return tuple(cols[i].lower() for i in sort_cols if i < len(cols))
+        return sorted(lines, key=sort_key)
+        
+    with open(filepath, "r") as f:
+        lines = f.readlines()
+
+    if header_lines != 0:
+        # Save header
+        header = lines[:header_lines] if isinstance(header_lines, int) else header_lines(lines) #26 for gaf, 1 for single header
+        data_lines = lines[header_lines:]
+    else:
+        header = []
+        data_lines = lines
+
+    if dedup:
+        if dedup_cols != None:
+            print("Deduplicating " + filename + " by column(s): " + str(dedup_cols) + "...")
+        else:
+            print("Deduplicating " + filename + " by full line...")
+        data_lines = deduplicate(data_lines, dedup_cols)
+
+    if sort:
+        print("Sorting " + filename + " on column(s): " + str(sort_cols))
+        data_lines = sort(data_lines, sort_cols)
+
+    with open(filepath, "w") as f:
+        f.writelines(header)
+        f.writelines(data_lines)
 
 main()

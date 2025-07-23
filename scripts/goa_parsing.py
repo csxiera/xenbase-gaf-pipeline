@@ -11,18 +11,16 @@ from io import StringIO
 # NOTE: Use get_files.sh to download required files if needed
 # Original GOA_parsing perl script adapted into create_xenbase_gaf, parse_gaf, and match_to_xenbase functions
 
-# *** Need to add GOLR annotations as well? - if gaf format is the same as GOA gaf, should be able to use same functions for processing
-
 def main():
     # ---------------------------- Setup ----------------------------
     HOME = os.path.expanduser("~/xenbase-gaf-pipeline")
-    #script_dir = os.path.dirname(os.path.abspath(__file__))
 
     # folder paths
-    global input_dir, gaf_dir, ncbi_map_dir, output_dir
+    global gaf_dir, ncbi_map_dir, xb_dir, output_dir
     input_dir = os.path.join(HOME, "input-files")
-    gaf_dir = os.path.join(input_dir, "gafs")
-    ncbi_map_dir = os.path.join(input_dir, "ncbi-map")
+    gaf_dir = os.path.join(input_dir, "goa-gafs")
+    ncbi_map_dir = os.path.join(input_dir, "ncbi-maps")
+    xb_dir = os.path.join(input_dir, "xenbase-files")
     output_dir = os.path.join(HOME, "output-files")
     
     global encoding
@@ -36,57 +34,90 @@ def main():
     allowed_codes = {"EXP", "IDA", "IMP", "IGI", "IEP", "ISS", "TAS", "IC"}
 
     # Maps
-    global xen_uniprot_map, xen_ncbi_map, ortholog_lookup, ortho_uniprot_map, ortho_ncbi_to_uniprot
+    global xen_uniprot_map, xen_ncbi_map, xen_to_ortho_lookup, ortho_to_xen_lookup, ortho_uniprot_map, ortho_ncbi_map
     xen_uniprot_map = {}                # key = xenopus uniprot id: contains ncbi id, xenbase id, symbol, name, synonyms, & go ids
-    xen_ncbi_map = {}                   # key = xenopus ncbi ids: contains xenbase id, symbol, name, synonyms, etc.
-    ortholog_lookup = {}                # key = ortholog ncbi ids: contains xenopus ncbi ids
+    xen_ncbi_map = {}                   # key = xenopus ncbi id: contains xenbase id, symbol, name, synonyms & uniprots
+    xen_to_ortho_lookup = {}            # key = ortho species, ortholog ncbi id: contains xenopus ncbi ids
+    ortho_to_xen_lookup = {}            # key = xenopus ncbi id, ortho species: contains ortholog ncbi ids
     ortho_uniprot_map = {}              # key = ortholog uniprot id: contains ncbi id & go ids
-    ortho_ncbi_to_uniprot = {}          # key = ortholog ncbi id: contains uniprot id
+    ortho_ncbi_map = {}                 # key = ortholog ncbi id: contains uniprot id
 
+    # List of ortholog species to process
     ortho_species_list = ["Human", "Mouse", "Rat", "Chicken", "Zebrafish", "Drosophila"]
-    # FIX!!: want to pass this info in maybe??
-    xenopus_gaf = os.path.join(gaf_dir, 'Xenopus.GOA.Extracted.2025-07-18.gaf')
-    ortho_gaf = os.path.join(gaf_dir, 'Human.GOA.Extracted.2025-07-18.gaf')
 
-    '''xenopus_gaf = os.path.join(gaf_dir, 'Xenopus.GOA.TEST.gaf')
-    ortho_gaf = os.path.join(gaf_dir, 'Human.GOA.TEST.gaf')'''
-    ortho_ncbi_mapping = os.path.join(ncbi_map_dir, 'Human_NCBI_Mapping.tsv')
+    # Specify date files were downloaded/extracted
+    input_date = '2025-07-18'
 
     # ---------------------------- Data Processing ----------------------------
 
-    sub_ortholog_uniprots = False    # Set to false if Xenbase GAF without ortholog uniprots is needed
+    # Filter ortholog GAF files to remove invalid evidence codes
+    gaf_suffix = f'GOA.Extracted.{input_date}.gaf'
+    for species in ortho_species_list:
+        ortho_gaf = os.path.join(gaf_dir, f'{species}.{gaf_suffix}')
+        filter_gaf(ortho_gaf, create_copy=True, filter_col=6, filter_values=allowed_codes)
 
-    if sub_ortholog_uniprots:
-        # Filter ortholog GAF file to remove invalid evidence codes
-        filtered_ortho_gaf = filter_gaf(ortho_gaf, create_copy=True, filter_col=6, filter_values=allowed_codes)
+    # Populate Xenopus maps
+    xenopus_gaf = os.path.join(gaf_dir, f'Xenopus.{gaf_suffix}')
+    populate_maps(xenopus_gaf)
 
-        # Populates maps needed to sub ortholog uniprot IDs into Xenbase GAF with/from col
-        populate_maps(xenopus_gaf, 'Xenopus')
-        populate_maps(filtered_ortho_gaf, 'Human', ortho_ncbi_mapping)
+    # Create Xenbase GAF from GPI & add in ortholog annotations
+    create_xenbase_gaf(xenopus_gaf, output_dir)
+    xenbase_gaf = os.path.join(output_dir, "Xenbase.gaf")
+
+    for species in ortho_species_list:
+        ortho_uniprot_map = {}
+        ortho_ncbi_map = {}
+
+        print(f"--------------- Processing {species} Ortholog Annotations ---------------")
+
+        # Populate ortholog maps for given species
+        filtered_ortho_gaf = os.path.join(gaf_dir, f'{species}.{gaf_suffix}')
+        populate_maps(filtered_ortho_gaf, species)
 
         # Filter ortholog gaf to only include annotations with xenopus ncbi gene id matches
         filtered_ortho_gaf = filter_gaf(filtered_ortho_gaf, create_copy=False, filter_col=1, filter_values=ortho_uniprot_map.keys())
-        clean(filtered_ortho_gaf, sort=True, sort_cols=[2,1,4]) # sort by symbol, then uniprot, then go id
+        #clean(filtered_ortho_gaf, sort=True, sort_cols=[2,1,4]) # sort by symbol, then uniprot, then go id
 
-        # Replace db, object_id, etc in human gaf with mapped xb info
+        # Map ortholog annotations to Xenbase gene IDs and sub Xenbase info into ortholog GAF
+        xen_from_ortho = modify_ortho_annotations(filtered_ortho_gaf, output_dir, species)
 
-        # Create Xenbase GAF from GPI & add in human annotations
-        create_xenbase_gaf(xenopus_gaf, output_dir)
-    
-    else:
-        # Modify GAF (from EBI) with xenbase gene information ONLY (no ortholog uniprots in with/from col)
-        populate_maps(xenopus_gaf, 'Xenopus')
-        create_xenbase_gaf(xenopus_gaf, output_dir)
+        # Combine ortholog annotations with Xenbase GAF
+        # CHECK!!: Do I need to filter out Xenbase annotations that don't have a match to the given ortholog species?
+        xen_with_ortho = os.path.join(output_dir, f"Xenbase_w_{species}.gaf")
+        combine_annotations(xenbase_gaf, xen_from_ortho, xen_with_ortho)
 
-    print("\nFinished.\n")
+    # Remove filtered gafs (.tmp) from input goa gaf folder
+    remove_tmp_files(gaf_dir)
+
+    print(f"--------------- Combining Ortholog Annotations ---------------\n")
+
+    # Create master ortholog file to compile all ortholog annotations in
+    master_ortho_gaf = f'{output_dir}/Master_Orthologs.gaf'
+    open(master_ortho_gaf, 'w').close()
+
+    for species in ortho_species_list:
+        print(f"Adding {species} ISO annotations to master ortholog file...\n")
+        single_ortho_gaf = f'{output_dir}/ortho-gafs/Xenbase_from_{species}.gaf'
+
+        # Add annotations from given species into master ortholog file
+        combine_annotations(master_ortho_gaf, single_ortho_gaf, master_ortho_gaf)
+
+        # Collapse duplicate lines by combining uniprots/sources into single strings
+        collapse_uniprots_by_line(master_ortho_gaf)
+
+    clean(master_ortho_gaf, header_lines = 0, dedup=False, sort=True, sort_cols = [2,4])
+
+    # Add all orthologs to Xenbase GAF
+    xen_w_ortho = f'{output_dir}/Xenbase_w_Orthologs.gaf'
+    combine_annotations(xenbase_gaf, master_ortho_gaf, xen_w_ortho)
+    clean(xen_w_ortho, header_lines = 26, dedup=False, sort=True, sort_cols = [2,6,4])
+
+    print("Finished!\n")
 
 # ------------------------------- Functions -------------------------------
-def set_files(ortho_species_list):
 
-    pass
-
-# FUNCTION: Create uniprot/symbol dictionary to map xenopus annotation data to orthologs
-def populate_maps(gaf_in, species, ortho_mapping_file=None):
+# FUNCTION: Create uniprot/ncbi dictionaries to map xenopus annotation data to orthologs
+def populate_maps(gaf_in, species=None):
     
     # FUNCTION: Get NCBI ID from DB_Xref string in GPI file
     def extract_ncbi_id(dbxref):
@@ -139,7 +170,7 @@ def populate_maps(gaf_in, species, ortho_mapping_file=None):
             elif isinstance(entry, dict) and "go_ids" not in entry:
                 entry.setdefault("go_ids", [])"""
 
-        print(f"\nAdded GO IDs to {species} Uniprot map")
+        print(f"\nAdded GO IDs to Uniprot map")
 
     # FUNCTION: Prints records in map (default 10)
     def print_map(dict_name, num_records=10):
@@ -148,12 +179,12 @@ def populate_maps(gaf_in, species, ortho_mapping_file=None):
                 break
             print(f"{key}: {info}")
 
-    # Prepare xenopus map
-    if species == 'Xenopus': 
-        gpi = os.path.join(input_dir, 'Xenbase.gpi')
+    # Prepare xenopus maps
+    if not species: 
+        gpi = os.path.join(xb_dir, 'Xenbase.gpi')
+        xenopus_orthologs = os.path.join(ncbi_map_dir, 'Xenopus_NCBI_Orthologs.tsv')
 
-        # Populate xenopus uniprot -> xenbase info map
-        # FIX!!: Create xenopus ncbi id -> xenbase info map
+        # Populate xenopus uniprot and xenopus ncbi -> xenbase info maps
         with open(gpi, 'r', encoding=encoding) as f_in:
             reader = csv.reader(f_in, delimiter='\t')
             for fields in reader:
@@ -164,6 +195,7 @@ def populate_maps(gaf_in, species, ortho_mapping_file=None):
                 DB_symbol = fields[2]
                 DB_Object_Name = fields[3]
                 DB_Object_Synonym = fields[4]
+                object_type = fields[5]
                 dbxref = fields[8]
                 uniprots = re.findall(r'Uni[Pp]rotKB:(.+?)(?:\||$)', dbxref)
                 ncbi_id = extract_ncbi_id(dbxref)
@@ -175,27 +207,35 @@ def populate_maps(gaf_in, species, ortho_mapping_file=None):
                         "xenbase_id": xenbase,
                         "symbol": DB_symbol,
                         "name": DB_Object_Name,
-                        "synonyms": DB_Object_Synonym
+                        "synonyms": DB_Object_Synonym,
+                        "object_type": object_type,
                     })
+
+                xen_ncbi_map.setdefault(ncbi_id, {})
+                xen_ncbi_map[ncbi_id].update({
+                    "xenbase_id": xenbase,
+                    "symbol": DB_symbol,
+                    "name": DB_Object_Name,
+                    "synonyms": DB_Object_Synonym,
+                    "object_type": object_type,
+                    "uniprots": uniprots
+                })
 
             print(f"\nLoaded {len(xen_uniprot_map)} Xenopus UniProt IDs -> Xenbase info into map")
             #print_map(xen_uniprot_map)
+
+            print(f"\nLoaded {len(xen_ncbi_map)} Xenopus NCBI IDs -> Xenbase info into map")
+            #print_map(xen_ncbi_map)
 
         # Add GO IDs and drop any uniprots without them (ie. not found in xenopus gaf)
         add_go_ids(gaf_in, xen_uniprot_map)
         #print_map(xen_uniprot_map)
 
-    # Prepare ortholog maps (if ortholog file/species provided)
-    elif species != 'Xenopus' and ortho_mapping_file:
-        xenopus_orthologs = os.path.join(ncbi_map_dir, 'Xenopus_NCBI_Orthologs.tsv')
-
-        # Populate ortholog lookup map:
-        # FIX!!: change ortholog lookup map to be [species][ortho_ncbi] = xen_ncbi
+        # Populate ortholog lookup maps:
         with open(xenopus_orthologs, 'r', encoding=encoding) as f_in:
             reader = csv.reader(f_in, delimiter='\t')
             header = next(reader)
             species_keys = [key.capitalize() for key in header[2:8]]
-            print(species_keys)
 
             for fields in reader:
                 xen_ncbi_id = fields[1]
@@ -203,16 +243,39 @@ def populate_maps(gaf_in, species, ortho_mapping_file=None):
                     continue
 
                 species_map = dict(zip(species_keys, fields[2:8]))
-                ortholog_lookup[xen_ncbi_id] = species_map
 
-            print(f"\nLoaded {len(ortholog_lookup)} Xenopus NCBI gene IDs -> orthologs into map")
-            #print_map(ortholog_lookup)
+                # Xenopus NCBI -> Ortho Species -> Ortho NCBI
+                xen_to_ortho_lookup[xen_ncbi_id] = species_map
+
+                # Ortho Species -> Ortho NCBI -> Xenopus NCBI
+                for ortho_species, ortho_ncbi in species_map.items():
+                    if not ortho_ncbi:
+                        continue
+
+                    if ortho_species not in ortho_to_xen_lookup:
+                        ortho_to_xen_lookup[ortho_species] = {}
+
+                    ortho_to_xen_lookup[ortho_species][ortho_ncbi] = xen_ncbi_id
+
+            print(f"\nLoaded {len(xen_to_ortho_lookup)} Xenopus NCBI IDs -> Ortholog NCBI IDs into map")
+            #print_map(xen_to_ortho_lookup)
+            print(f"\nLoaded {len(ortho_to_xen_lookup['Human'])} Ortholog NCBI IDs (Ex. Human) -> Xenopus NCBI IDs into map")
+            #print_map(ortho_to_xen_lookup['Human'])
+
+    # Prepare ortholog maps (if ortholog file/species provided)
+    elif species:
+        ortho_mapping_file = os.path.join(ncbi_map_dir, f"{species}_NCBI_Mapping.tsv")
+
+        if not os.path.exists(ortho_mapping_file):
+            print(f"ERROR: No NCBI mapping file found for {species} at '{ortho_mapping_file}'")
+            print(f"Skipping {species} Uniprot & NCBI map creation")
+            return
 
         # Populate ortholog uniprot & ncbi maps:
         with open(ortho_mapping_file, 'r', encoding=encoding) as f_in:
             reader = csv.reader(f_in, delimiter='\t')
             orthologus_ncbi_ids = {
-                entry[species] for entry in ortholog_lookup.values() if entry[species]
+                entry[species] for entry in xen_to_ortho_lookup.values() if entry[species]
             }
 
             for fields in reader:
@@ -224,23 +287,23 @@ def populate_maps(gaf_in, species, ortho_mapping_file=None):
 
                 ortho_uniprot_map[uniprot_id] = ncbi_id
 
-                if ncbi_id in ortho_ncbi_to_uniprot:
-                    ortho_ncbi_to_uniprot[ncbi_id].append(uniprot_id)
+                if ncbi_id in ortho_ncbi_map:
+                    ortho_ncbi_map[ncbi_id].append(uniprot_id)
                 else:
-                    ortho_ncbi_to_uniprot[ncbi_id] = [uniprot_id]
+                    ortho_ncbi_map[ncbi_id] = [uniprot_id]
 
-            print(f"Loaded {len(ortho_uniprot_map)} {species} UniProt IDs -> NCBI gene IDs into map")
+            print(f"\nLoaded {len(ortho_uniprot_map)} {species} UniProt IDs -> NCBI IDs into map")
             #print_map(ortho_uniprot_map)
-            print(f"Loaded {len(ortho_ncbi_to_uniprot)} {species} NCBI gene IDs -> Uniprot IDs into map")
-            #print_map(ortho_ncbi_to_uniprot)
+            print(f"\nLoaded {len(ortho_ncbi_map)} {species} NCBI IDs -> Uniprot IDs into map")
+            #print_map(ortho_ncbi_map)
 
         # Add GO IDs and drop any uniprots without them (ie. those not found in ortholog gaf)
         add_go_ids(gaf_in, ortho_uniprot_map)
         #print_map(ortho_uniprot_map)
 
         # Filter out uniprots that arent found in ortholog gaf
-        for ncbi_id in list(ortho_ncbi_to_uniprot.keys()):
-            uniprot_list = ortho_ncbi_to_uniprot[ncbi_id]
+        for ncbi_id in list(ortho_ncbi_map.keys()):
+            uniprot_list = ortho_ncbi_map[ncbi_id]
             valid_uniprots = []
 
             for uniprot in uniprot_list:
@@ -248,16 +311,16 @@ def populate_maps(gaf_in, species, ortho_mapping_file=None):
                     valid_uniprots.append(uniprot)
             
             if valid_uniprots:
-                ortho_ncbi_to_uniprot[ncbi_id] = valid_uniprots
+                ortho_ncbi_map[ncbi_id] = valid_uniprots
             else:
-                del ortho_ncbi_to_uniprot[ncbi_id]
-        #print_map(ortho_ncbi_to_uniprot)
+                del ortho_ncbi_map[ncbi_id]
+        #print_map(ortho_ncbi_map)
 
 # FUNCTION: Filter gaf file and return path of new filtered gaf
 def filter_gaf(gaf_in, create_copy=True, filter_values=None, filter_col=None):
-    print(f"Filtering {os.path.basename(gaf_in)} on {gaf_columns[filter_col]} ...")
+    print(f"\nFiltering {os.path.basename(gaf_in)} on {gaf_columns[filter_col]} ...")
     gaf_name = os.path.basename(gaf_in)[:-4]   # remove extension
-    gaf_out = os.path.join(gaf_dir, gaf_name + "_filtered.gaf")
+    gaf_out = os.path.join(gaf_dir, gaf_name + "_filtered.tmp")
 
     with open(gaf_in, 'r', encoding=encoding) as f_in, open(gaf_out, 'w', encoding=encoding) as f_out:
         reader = csv.reader(f_in, delimiter='\t')
@@ -279,43 +342,7 @@ def filter_gaf(gaf_in, create_copy=True, filter_values=None, filter_col=None):
         shutil.move(gaf_out, gaf_in)
         gaf_out = gaf_in
 
-    print("Filtered output saved to " + gaf_out + "\n")
     return gaf_out      # returns path of filtered gaf for use later if needed
-
-# FUNCTION: Sub xenbase info into matching ortholog annotations 
-def modify_ortho_annotations(ortho_gaf, output_dir, species):
-    def wrapper(fields):
-        match_to_xenbase(fields, matched, species)
-
-    matched = os.path.join(output_dir, f'ortho-gafs/Xenbase_from_{species}.gaf')
-    parse_gaf(ortho_gaf, wrapper)
-
-# FUNCTION: Create Xenbase matched & unmatched GAFs and provenance file ('matched' + original db and uniprot info) (Adapted from original GOA_parsing perl script)
-def create_xenbase_gaf(gaf_in, output_dir):
-    def wrapper(fields):
-        match_to_xenbase(fields, matched, provenance, unmatched)
-
-    filename = os.path.basename(gaf_in)[:-4]
-    
-    matched = os.path.join(output_dir, f'Xenbase.gaf')
-    unmatched = os.path.join(output_dir, f'unmatched_annotations.{filename}.gaf')
-    provenance = os.path.join(output_dir, 'annotation_provenance.tmp')
-
-    # Remove output files if they already exist (for clean write)
-    for file in [matched, unmatched, provenance]:
-        if file and os.path.exists(file):
-            os.remove(file)
-
-    # Write Xenbase header to output GAF
-    write_gaf_header(matched)
-    
-    # Parse & match GAF with Xenbase GPI
-    parse_gaf(gaf_in, wrapper)
-    
-    # Deduplicate on object id, qualifier, go id, evidence code, and with/from columns
-    # Sort by symbol then go id
-    clean(matched, header_lines=26, dedup=True, dedup_cols=[1,3,4,6,7], sort=True, sort_cols=[2,4])
-    clean(provenance, dedup=True, dedup_cols=[1,3,4,6,7], sort=True, sort_cols=[2,4])
 
 # FUNCTION: Write header for matched annotations file
 def write_gaf_header(gaf_output):
@@ -349,6 +376,33 @@ def write_gaf_header(gaf_output):
     """)
     with open(gaf_output, 'w') as gaf:
         gaf.write(header)
+
+# FUNCTION: Create Xenbase matched & unmatched GAFs and provenance file ('matched' + original db and uniprot info) (Adapted from original GOA_parsing perl script)
+def create_xenbase_gaf(gaf_in, output_dir):
+    def wrapper(fields):
+        match_to_xenbase(fields, matched, provenance, unmatched)
+    
+    print(f"\n-------------------------- Creating Xenbase GAF --------------------------")
+
+    matched = os.path.join(output_dir, f'Xenbase.gaf')
+    unmatched = os.path.join(output_dir, f'Unmatched_Annotations.gaf')
+    provenance = os.path.join(output_dir, 'Annotation_Provenance.tsv')
+
+    # Remove output files if they already exist (for clean write)
+    for file in [matched, unmatched, provenance]:
+        if file and os.path.exists(file):
+            os.remove(file)
+
+    # Write Xenbase header to output GAF
+    write_gaf_header(matched)
+    
+    # Parse & match GAF with Xenbase GPI
+    parse_gaf(gaf_in, wrapper)
+    
+    # Deduplicate on object id, qualifier, go id, evidence code, and with/from columns
+    # Sort by symbol then go id
+    clean(matched, header_lines=26, dedup=True, dedup_cols=[1,3,4,6,7], sort=True, sort_cols=[2,4])
+    clean(provenance, dedup=True, dedup_cols=[1,3,4,6,7], sort=True, sort_cols=[2,4])
 
 # FUNCTION: Parse GAF and pass fields into matching function (Adapted from original GOA_parsing perl script)
 def parse_gaf(gaf_in, process_func):
@@ -385,7 +439,7 @@ def parse_gaf(gaf_in, process_func):
 
             process_func(records)
 
-# FUNCTION: Find rows in GAF where uniprot ID exists in xen_uniprot_map (Adapted from original GOA_parsing perl script)
+# FUNCTION: Find rows in Xenopus GAF where uniprot ID exists in xen_uniprot_map (Adapted from original GOA_parsing perl script)
 # Matched & provenance output will ONLY contain annotations where a xenbase gene ID was found
 # Unmatched output will ONLY contain annotations where NO xenbase genes were found
 def match_to_xenbase(fields, matched, provenance=None, unmatched=None):
@@ -412,40 +466,104 @@ def match_to_xenbase(fields, matched, provenance=None, unmatched=None):
             with open(unmatched, 'a') as u:
                 u.write(f"{fields['db']}:{fields['uniprot_id']}\t{fields['symbol']}\t{fields['qualifier']}\t{fields['go_id']}\t{fields['db_ref']}\t{fields['evidence']}\t{fields['with_from']}\t{fields['aspect']}\t{fields['object_name']}\t{fields['object_synonyms']}\t{fields['object_type']}\t{fields['taxon']}\t{fields['date']}\t{fields['assigned_by']}\t{fields['annotation_extension']}\t{fields['gene_product_id']}\n")    
 
-# FUNCTION: Sub xenbase info into ortholog gaf annotations
+# FUNCTION: Sub xenbase info into matching ortholog annotations 
+def modify_ortho_annotations(ortho_gaf, output_dir, species):
+    def wrapper(fields):
+        match_ortho_to_xenbase(fields, matched, species)
+
+    matched = os.path.join(output_dir, f'ortho-gafs/Xenbase_from_{species}.gaf')
+
+    # Remove matched file if it already exists (for clean write)
+    if os.path.exists(matched):
+        os.remove(matched)
+
+    parse_gaf(ortho_gaf, wrapper)
+
+    # Remove duplicate lines and collapse uniprots for matching annotations into 1 line
+    clean(matched, header_lines=0, dedup=True, dedup_cols=[1,4,7])
+    collapse_uniprots_by_line(matched)
+    
+    # Return file path of modified ortho gaf
+    return matched
+
+# FUNCTION: Find rows in ortholog GAF where uniprot can be mapped to a xenbase ID. Sub in xenbase info and change annotation evidence to "ISO"
 def match_ortho_to_xenbase(fields, matched, species):
     uniprot_id = fields["uniprot_id"]
 
     if uniprot_id in ortho_uniprot_map:
-        ncbi_id = ortho_uniprot_map[uniprot_id]
-        for xenopus_ncbi, species_map in ortholog_lookup.items():   #FIX!!: change ortholog lookup map to be [species][ortho_ncbi] = xen_ncbi
-            human_ids = species_map.get("human", [])
-            if ncbi_id in human_ids:
-                pass
-                # Use xenopus ncbi id to access xb info?
+        ortho_ncbi = ortho_uniprot_map[uniprot_id]["ncbi_id"]
+        if ortho_ncbi in ortho_to_xen_lookup[species]:
+            xen_ncbi = ortho_to_xen_lookup[species][ortho_ncbi]
 
-# FUNCTION: Add ortholog annotations (as ISO evidence types) to xenbase GAF (as new GAF)
-def add_ortho_annotations(xenbase_gaf, output_dir, ortho_species):
-    for species in ortho_species:
-        ortho_gaf = os.path.join(output_dir, f"ortho-gafs/Xenbase_from_{species}.gaf")
-        output_gaf = os.path.join(output_dir, f"Xenbase_w_{species}.gaf")
+    if xen_ncbi and xen_ncbi in xen_ncbi_map:
+        PLACEHOLDER_REF = "GO_REF:PLACEHOLDER"
+        TAXON_ID = "taxon:8364"
+        EVIDENCE = "ISO"
+        SOURCE = species
+        #SOURCE = "Xenbase"
+        DATE = date.today().strftime("%Y%m%d")
+        xb_data = xen_ncbi_map[xen_ncbi]
 
-        with open(xenbase_gaf, 'r', encoding=encoding) as xen_file:
-            xen_lines = xen_file.readlines()
+        with open(matched, 'a') as m:
+            m.write(f"Xenbase\t{xb_data['xenbase_id']}\t{xb_data['symbol']}\t{fields['qualifier']}\t{fields['go_id']}\t{PLACEHOLDER_REF}\t{EVIDENCE}\tUniProtKB:{uniprot_id}\t{fields['aspect']}\t{xb_data['name']}\t{xb_data['synonyms']}\t{xb_data['object_type']}\t{TAXON_ID}\t{DATE}\t{SOURCE}\n")  #\t{fields['annotation_extension']}\t{fields['gene_product_id']}
 
-        with open(ortho_gaf, 'r', encoding=encoding) as ortho_file:
-            ortho_lines = ortho_file.readlines()
+# FUNCTION: Collapses annotation lines that only differ on the uniprot/source. Uniprots and sources are concatenated into a string
+def collapse_uniprots_by_line(input_gaf):
+    grouped = {}
+    basename = os.path.basename(input_gaf)
+    temp_file = f'{input_gaf}.tmp'
 
-        with open(output_gaf, 'w', encoding=encoding) as output:
-            output.writelines(xen_lines)
-            output.writelines(ortho_lines)
+    with open(input_gaf, 'r', encoding=encoding) as f:
+        for line in f:
+            if line.startswith('!') or not line.strip():
+                continue
+            cols = line.strip().split('\t')
+            
+            # Build key, excluding With/From (7) and Source (14) columns
+            key = tuple(cols[:7] + cols[8:14] + cols[15:])
+
+            if key not in grouped:
+                grouped[key] = {
+                    'uniprots': [],
+                    'sources': [],
+                    'template': cols
+                }
+
+            if cols[7] not in grouped[key]['uniprots']:
+                grouped[key]['uniprots'].append(cols[7])
+
+            if cols[14] not in grouped[key]['sources']:
+                grouped[key]['sources'].append(cols[14])
+
+    with open(temp_file, 'w', encoding=encoding) as temp:
+        for group in grouped.values():
+            new_row = group['template'][:]
+            new_row[7] = '|'.join(group['uniprots'])
+            new_row[14] = '/'.join(group['sources'])
+            temp.write('\t'.join(new_row) + '\n')
+
+    shutil.move(temp_file, input_gaf)
+    print(f"Concatenated uniprots in {basename}\n")
+    #clean(input_gaf, header_lines = 0, dedup=False, sort=True, sort_cols = [2,4])
+
+# FUNCTION: Adds annotations between 2 gaf files together
+def combine_annotations(file_1, file_2, output_file):
+    with open(file_1, 'r', encoding=encoding) as f1:
+        file_1_lines = f1.readlines()
+
+    with open(file_2, 'r', encoding=encoding) as f2:
+        file_2_lines = f2.readlines()
+
+    with open(output_file, 'w', encoding=encoding) as output:
+        output.writelines(file_1_lines)
+        output.writelines(file_2_lines)
 
 # FUNCTION: Clean output files by deduplicating and/or sorting
-# Default deduplication: file is deduplicated on the full line, but can be deduplicated on specific column(s) (ex. dedup_cols = [1,4] will remove duplicates based on gene id + go term pairs only)
-# Default sorting: file is not sorted, but can be sorted by multiple columns (ex. sort_cols = [2] will sort gaf by gene symbols)
 def clean(filepath, header_lines = 0, dedup=True, dedup_cols=None, sort=False, sort_cols = None):
     filename = os.path.basename(filepath)
 
+    # FUNCTION: removes duplicate lines either based on a full line match or a partial line match in a given set of columns
+    # Default deduplication: full line match; for partial line match, set dedup_cols = [col_a, col_b, etc.] (ex. dedup_cols = [1,4] will remove duplicates based on gene id + go term pairs only)
     def deduplicate(lines, dedup_cols):
         seen = set()
         unique = []
@@ -467,8 +585,10 @@ def clean(filepath, header_lines = 0, dedup=True, dedup_cols=None, sort=False, s
 
         print(f"{removed_count} duplicate lines removed")
         return unique
-            
-    def sort(lines, sort_cols):
+
+    # FUNCTION: sorts lines in file by a given set of column(s,) giving priority to columns in the order they appear in the list (left to right)
+    # Default sorting: file is not sorted; for sorting on multiple cols, set sort_cols = [col_a, col_b, etc.] (ex. sort_cols = [2, 4] will sort gaf by gene symbols, then go ids)    
+    def sort_lines(lines, sort_cols):
         def sort_key(line):
             cols = line.split('\t')
             return tuple(cols[i].lower() for i in sort_cols if i < len(cols))
@@ -487,19 +607,34 @@ def clean(filepath, header_lines = 0, dedup=True, dedup_cols=None, sort=False, s
 
     if dedup:
         if dedup_cols != None:
-            print("Deduplicating " + filename + " by column(s): " + str(dedup_cols) + "...")
+            dedup_col_names = [gaf_columns[i] for i in dedup_cols]
+            print(f"Deduplicating {filename} by column(s): {", ".join(dedup_col_names)} ...")
         else:
             print("Deduplicating " + filename + " by full line...")
         data_lines = deduplicate(data_lines, dedup_cols)
 
     if sort:
-        print("Sorting " + filename + " on column(s): " + str(sort_cols))
-        data_lines = sort(data_lines, sort_cols)
+        sort_col_names = [gaf_columns[i] for i in sort_cols]
+        print(f"Sorting {filename} on column(s): {", ".join(sort_col_names)} ...")
+        data_lines = sort_lines(data_lines, sort_cols)
 
     with open(filepath, "w") as f:
         f.writelines(header)
         f.writelines(data_lines)
 
+    #print(f"{filename} Cleaned!\n")
+    print("")
+
+# FUNCTION: Remove temp files from given folder
+def remove_tmp_files(folder_path):
+    for filename in os.listdir(folder_path):
+        if filename.endswith(".tmp"):
+            file_path = os.path.join(folder_path, filename)
+            try:
+                os.remove(file_path)
+                print(f"Deleted: {file_path}")
+            except Exception as e:
+                print(f"Failed to delete {file_path}: {e}")
 
 main()
 
@@ -551,7 +686,7 @@ def create_xenbase_w_ortho_gaf(gaf_in, output_dir, ortho_species):
 # FUNCTION: Find rows in GAF where Xenbase uniprot ID can be mapped to an ortholog uniprot ID
 # Unfiltered output will contain ALL annotations from original gaf, only subbing with/from IF ortholog uniprot found
 # Filtered output will ONLY contain annotations where an ortholog uniprot was found
-# Ortholog GAF info stored in ortho_uniprot_map and ortho_ncbi_to_uniprot map
+# Ortholog GAF info stored in ortho_uniprot_map and ortho_ncbi_map map
 def match_to_ortho(fields, unfiltered, filtered, ortho_species, check_go_id=False):
     uniprot_id = fields["uniprot_id"]
     go_id = fields["go_id"]
@@ -561,8 +696,8 @@ def match_to_ortho(fields, unfiltered, filtered, ortho_species, check_go_id=Fals
         ncbi_id = xen_uniprot_map[uniprot_id]["ncbi_id"]
         if ncbi_id in ortholog_lookup:
             ortho_ncbi = ortholog_lookup[ncbi_id][ortho_species]
-            if ortho_ncbi and ortho_ncbi in ortho_ncbi_to_uniprot:
-                ortho_uniprots = ortho_ncbi_to_uniprot[ortho_ncbi]
+            if ortho_ncbi and ortho_ncbi in ortho_ncbi_map:
+                ortho_uniprots = ortho_ncbi_map[ortho_ncbi]
                 for ortho_uniprot in ortho_uniprots:
                     if not check_go_id:
                         valid_uniprots.add(f"UniprotKB:{ortho_uniprot}")
@@ -582,8 +717,3 @@ def match_to_ortho(fields, unfiltered, filtered, ortho_species, check_go_id=Fals
         with open(unfiltered, 'a') as u:
                 u.write(f"{fields['db']}\t{fields['uniprot_id']}\t{fields['symbol']}\t{fields['qualifier']}\t{fields['go_id']}\t{fields['db_ref']}\t{fields['evidence']}\t \t{fields['aspect']}\t{fields['object_name']}\t{fields['object_synonyms']}\t{fields['object_type']}\t{fields['taxon']}\t{fields['date']}\t{fields['assigned_by']}\t{fields['annotation_extension']}\t{fields['gene_product_id']}\n")
 '''
-
-
-
-
-
