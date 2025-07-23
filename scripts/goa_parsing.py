@@ -382,7 +382,7 @@ def create_xenbase_gaf(gaf_in, output_dir):
     def wrapper(fields):
         match_to_xenbase(fields, matched, provenance, unmatched)
     
-    print(f"\n-------------------------- Creating Xenbase GAF --------------------------")
+    print(f"\n------------------------ Creating Xenbase GAF ------------------------")
 
     matched = os.path.join(output_dir, f'Xenbase.gaf')
     unmatched = os.path.join(output_dir, f'Unmatched_Annotations.gaf')

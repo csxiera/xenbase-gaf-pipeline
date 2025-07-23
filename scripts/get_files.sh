@@ -34,10 +34,10 @@ echo "Drosophila GOA Extracted"
 # Download Xenbase gpi, genepage to gene ID map, and gene ID to ortholog NCBI id map
 curl https://download.xenbase.org/xenbase/GenePageReports/xenbase.gpi.gz | gunzip > $XB_DIR/Xenbase.gpi
 curl https://download.xenbase.org/xenbase/GenePageReports/XenbaseGenepageToGeneIdMapping_chd.txt > $XB_DIR/Xenbase_Genepage_To_GeneId.txt
-# NOTE: ^ line 11651 may be uncorrectly tabbed ("vma22  .L" instead of vma22.L); fix before using
+# NOTE: ^ line 11651 may be uncorrectly tabbed ("vma22  .L" instead of vma22.L); fix before using if redownloading
 curl https://xenbase-bio1.ucalgary.ca/cgi-bin/reports/genepage_entrez_orthologs.cgi | sed '/./,$!d' > "$NCBI_MAP_DIR/Xenopus_NCBI_Orthologs.tsv"
-{ echo -e "umbrella_id\txtrop\thuman\tmouse\trat\tzebrafish\tchicken\tdrosphila\tworm"; tail -n +2 "$NCBI_MAP_DIR/Xenopus_NCBI_Orthologs.tsv"; } > "$NCBI_MAP_DIR/tmp" && mv "$NCBI_MAP_DIR/tmp" "$NCBI_MAP_DIR/Xenopus_NCBI_Orthologs.tsv"
-# NOTE: ^ Changed header in ortholog file to match species names used here: "umbrella_id	xtrop	human	mouse	rat	zebrafish	chicken	drosphila	worm"
+{ echo -e "umbrella_id\txtrop\thuman\tmouse\trat\tzebrafish\tchicken\tdrosophila\tworm"; tail -n +2 "$NCBI_MAP_DIR/Xenopus_NCBI_Orthologs.tsv"; } > "$NCBI_MAP_DIR/tmp" && mv "$NCBI_MAP_DIR/tmp" "$NCBI_MAP_DIR/Xenopus_NCBI_Orthologs.tsv"
+# NOTE: ^ Changed header in ortholog file to match species names used in program/filenames
 echo "Xenbase files downloaded"
 
 # Download uniprot to NCBI id mapping files for each ortholog species
