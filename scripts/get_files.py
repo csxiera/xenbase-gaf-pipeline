@@ -4,33 +4,30 @@ import os
 import subprocess
 import gzip
 import shutil
-import time
-import threading
 from datetime import datetime
 from pathlib import Path
 from tqdm import tqdm
 
-# Define file paths (NOTE: If these are modified, must also change paths in goa_parsing.py)
-HOME = Path.home()
-DATA_DIR = f"{HOME}/xenbase-gaf-pipeline/input-files"
-GAF_DIR = f"{DATA_DIR}/goa-gafs"
-NCBI_MAP_DIR = f"{DATA_DIR}/ncbi-maps"
-XB_DIR = f"{DATA_DIR}/xenbase-files"
+# NOTE: URL strings may change in the future! Update EBI/uniprot/xenbase URL string in appropriate function if/when this happens
 
+# FUNCTION: Make input folders if they dont yet exist
 def set_folders():
     os.makedirs(DATA_DIR, exist_ok=True)
     os.makedirs(GAF_DIR, exist_ok=True)
     os.makedirs(NCBI_MAP_DIR, exist_ok=True)
     os.makedirs(XB_DIR, exist_ok=True)
 
+# FUNCTION: Download GOA file with data for all species
+# Contains EBI URL
 def download_goa():
     print("Downloading GOA file from EBI...")
-    url = GOA_URL
+    url = f"https://ftp.ebi.ac.uk/pub/databases/GO/goa/UNIPROT/goa_uniprot_all.gaf.gz"
     output_path = os.path.join(GAF_DIR, "original-goa", GOA_FILENAME)
     # chunk size = <BYTE SIZE> (To modify number of bytes streamed in a chunk during download; default = 10MB)
 
     download_w_progress(url, output_path=output_path)
 
+# FUNCTION: Extract GAF data for each species into seperate files
 def extract_from_goa(species):
     input_path = os.path.join(GAF_DIR, "original-goa", GOA_FILENAME)
     if not os.path.exists(input_path):
@@ -51,8 +48,6 @@ def extract_from_goa(species):
 
         output_file = f"{target.capitalize()}.GOA.Extracted.{DATE}.gaf"
         output_path = os.path.join(GAF_DIR, output_file)
-        start_time = datetime.now()
-        print(f"Start time: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
 
         try:
             with open(output_path, 'w') as outfile:
@@ -66,15 +61,13 @@ def extract_from_goa(species):
                 cmd = f"export PATH=$HOME/.local/bin:$PATH && pv -p -t -e -r {input_path} | zgrep -a '{taxon_pattern}'"
                 subprocess.run(cmd, shell=True, stdout=outfile, check=True)
 
-            end_time = datetime.now()
-            duration = (end_time - start_time).total_seconds()
-            
-            print(f"Download time: {duration:.2f} seconds")
             print(f"{target.capitalize()} successfully extracted into {output_file}!\n")
 
         except subprocess.CalledProcessError as e:
             print(f"Extraction failed for {target.capitalize()}: {e}")
 
+# FUNCTION: Download NCBI to uniprot mapping files
+# Contains uniprot URL
 def download_maps():
     print("Downloading mapping files...\n")
     targets = [key for key in species_taxon_map.keys() if key != "xenopus"]
@@ -99,6 +92,8 @@ def download_maps():
 
         download_w_progress(url, output_path)
 
+# FUNCTION: Download Xenbase GPI, genepage to gene id mapping, and ortholog mapping files
+# Contains Xenbase URLs
 def download_xenbase():
     print("Downloading Xenbase files...\n")
 
@@ -132,6 +127,7 @@ def download_xenbase():
         outfile.writelines(lines[1:])
     os.replace(tmp_path, ortholog_map_output)
 
+# FUNCTION: Show progress while downloading
 def download_w_progress(url, output_path, chunk_size=10*1024*1024):
     response = requests.get(url, stream=True)
     response.raise_for_status()
@@ -158,15 +154,19 @@ if __name__ == "__main__":
     parser.add_argument('--maps', action='store_true')
     parser.add_argument('--xenbase', action='store_true')
     parser.add_argument('--date', help='Optional date in YYYY-MM-DD format (Use if regenerating species-specific GAFs from older GOA download)')
-
     args = parser.parse_args()
 
-    # Ensure expected input folders exist
+    # Define file paths (NOTE: If these are modified, must also change paths in goa_parsing.py)
+    HOME = Path.home()
+    DATA_DIR = f"{HOME}/xenbase-gaf-pipeline/input-files"
+    GAF_DIR = f"{DATA_DIR}/goa-gafs"
+    NCBI_MAP_DIR = f"{DATA_DIR}/ncbi-maps"
+    XB_DIR = f"{DATA_DIR}/xenbase-files"
     set_folders()
 
+    # Set date and downloaded GOA filename
     DATE = args.date if args.date else datetime.today().strftime('%Y-%m-%d')
-    GOA_URL = f"https://ftp.ebi.ac.uk/pub/databases/GO/goa/UNIPROT/goa_uniprot_all.gaf.gz"  
-    GOA_FILENAME = f"{os.path.basename(GOA_URL).removesuffix(".gaf.gz")}.{DATE}.gaf.gz"
+    GOA_FILENAME = f"goa_uniprot_all.{DATE}.gaf.gz"
 
     # Set species to taxon map:
     species_taxon_map = {
