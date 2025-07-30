@@ -1,4 +1,5 @@
 import argparse
+import sys
 import requests
 import os
 import subprocess
@@ -8,8 +9,17 @@ from datetime import datetime
 from pathlib import Path
 from tqdm import tqdm
 
-# NOTE: URL strings may change in the future! Update EBI/uniprot/xenbase URL string in appropriate function if/when this happens
-
+# AUTHOR: C. Lenz
+# DATE LAST UPDATED: 2025-07-30
+#
+# SCRIPT FUNCTION: 
+#   1. Download GOA GAF file and extract into species-specific gafs
+#   2. Download NCBI -> uniprot maps for all potential ortholog species
+#   3. Download xenbase files, such as GPI and NCBI ortholog mapping file
+#
+# NOTE: URL strings may change in the future! 
+# Update EBI/uniprot/xenbase URL string in appropriate function if/when this happens
+#
 # Expected download times (from July 2025):
 #   - goa_uniprot_all.gaf.gz (~4hrs, 21GB)
 #   - species-specific gafs (~18 min each)
@@ -33,6 +43,7 @@ def download_goa():
     download_w_progress(url, output_path=output_path)
 
 # FUNCTION: Extract GAF data for each species into seperate files
+# NOTE: Extraction progress is not logged to get_files.log -> will output to terminal
 def extract_from_goa(species):
     input_path = os.path.join(GAF_DIR, "original-goa", GOA_FILENAME)
     if not os.path.exists(input_path):
@@ -56,14 +67,10 @@ def extract_from_goa(species):
 
         try:
             with open(output_path, 'w') as outfile:
-                '''subprocess.run(["zgrep", "-a", taxon_pattern, input_path],
-                            stdout=outfile,
-                            check=True)'''
-                
                 # Uses zgrep as its faster than gzip parsing in python
                 # pv utility tracks extraction process by tracking the bytes parsed in the input file
                 # FIX!!: Remove path to pv once installed by kamran
-                cmd = f"export PATH=$HOME/.local/bin:$PATH && pv -p -t -e -r {input_path} | zgrep -a '{taxon_pattern}'"
+                cmd = f"pv -p -t -e -r {input_path} | zgrep -a '{taxon_pattern}'"       #export PATH=$HOME/.local/bin:$PATH && 
                 subprocess.run(cmd, shell=True, stdout=outfile, check=True)
 
             print(f"{target.capitalize()} successfully extracted into {output_file}!\n")
@@ -74,7 +81,7 @@ def extract_from_goa(species):
 # FUNCTION: Download NCBI to uniprot mapping files
 # Contains uniprot URL
 def download_maps():
-    print("Downloading mapping files...\n")
+    print("Downloading mapping files...")
     targets = [key for key in species_taxon_map.keys() if key != "xenopus"]
 
     for target in targets:
@@ -104,11 +111,10 @@ def download_maps():
         os.remove(output_zipped)
         print(f"Extracted to {output_file}!\n")
 
-
 # FUNCTION: Download Xenbase GPI, genepage to gene id mapping, and ortholog mapping files
 # Contains Xenbase URLs
 def download_xenbase():
-    print("Downloading Xenbase files...\n")
+    print("Downloading Xenbase files...")
 
     # Download GPI file
     gpi_url = 'https://download.xenbase.org/xenbase/GenePageReports/xenbase.gpi.gz'
@@ -119,7 +125,7 @@ def download_xenbase():
     with gzip.open(gpi_output, 'rb') as gz_file, open(gpi_output.removesuffix(".gz"), 'wb') as out_file:
         shutil.copyfileobj(gz_file, out_file)
     os.remove(gpi_output)
-    print(f"Extracted to {gpi_output.removesuffix(".gz")}!\n")
+    print(f"Extracted to {gpi_output.removesuffix(".gz")}!")
 
     # Download genepage to gene ID map
     # NOTE: line 11651 may be uncorrectly tabbed ("vma22  .L" instead of "vma22.L"); Check before using if redownloading
@@ -167,7 +173,14 @@ if __name__ == "__main__":
     parser.add_argument('--maps', action='store_true')
     parser.add_argument('--xenbase', action='store_true')
     parser.add_argument('--date', help='Optional date in YYYY-MM-DD format (Use if regenerating species-specific GAFs from older GOA download)')
+    parser.add_argument('--log', action='store_true')
     args = parser.parse_args()
+
+    # Redirect output to log file
+    if args.log:
+        log = open("get_files.log", "wt")
+        sys.stdout = log
+        sys.stderr = log    #tqdm & requests use sterr for progress bars
 
     # Define file paths (NOTE: If these are modified, must also change paths in goa_parsing.py)
     HOME = Path.home()
@@ -178,6 +191,7 @@ if __name__ == "__main__":
     set_folders()
 
     # Set date and downloaded GOA filename
+    print(f"Date Run: {datetime.today().strftime('%Y-%m-%d')}")
     DATE = args.date if args.date else datetime.today().strftime('%Y-%m-%d')
     GOA_FILENAME = f"goa_uniprot_all.{DATE}.gaf.gz"
 
@@ -193,7 +207,10 @@ if __name__ == "__main__":
     }
 
     # Download/extract files specified
-    if args.goa: download_goa()
-    if args.extract: extract_from_goa(args.extract)
+    if args.goa and not args.date: download_goa()       # For new goa file download
+    if args.extract:
+        if args.date:
+            print(f"Download date of GOA file to extract species GAFs from: {DATE}")
+        extract_from_goa(args.extract)
     if args.xenbase: download_xenbase()
     if args.maps: download_maps()
