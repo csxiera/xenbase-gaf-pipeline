@@ -10,7 +10,7 @@ from tqdm import tqdm
 
 # NOTE: URL strings may change in the future! Update EBI/uniprot/xenbase URL string in appropriate function if/when this happens
 
-# Expected download times (as of July 2025):
+# Expected download times (from July 2025):
 #   - goa_uniprot_all.gaf.gz (~4hrs, 21GB)
 #   - species-specific gafs (~18 min each)
 #   - remaining files (>1 min each)
@@ -28,7 +28,7 @@ def download_goa():
     print("Downloading GOA file from EBI...")
     url = f"https://ftp.ebi.ac.uk/pub/databases/GO/goa/UNIPROT/goa_uniprot_all.gaf.gz"
     output_path = os.path.join(GAF_DIR, "original-goa", GOA_FILENAME)
-    # chunk size = <BYTE SIZE> (To modify number of bytes streamed in a chunk during download; default = 10MB)
+    # chunk size = <BYTE SIZE> (To modify number of bytes streamed in a chunk during download; default = 10*1024*1024 (10MB))
 
     download_w_progress(url, output_path=output_path)
 
@@ -92,10 +92,18 @@ def download_maps():
         url = f'https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/idmapping/by_organism/{species_name}_{species_taxon}_idmapping.dat.gz'
         
         output_file = f"{target.capitalize()}_NCBI_Mapping.tsv"
-        output_path = os.path.join(NCBI_MAP_DIR, output_file)
+        output_zipped = os.path.join(NCBI_MAP_DIR, f"{output_file}.gz")
         # chunk size = <BYTE SIZE> (To modify number of bytes streamed in a chunk during download; default = 10*1024*1024 (10MB))
 
-        download_w_progress(url, output_path)
+        download_w_progress(url, output_zipped)
+
+        with gzip.open(output_zipped, 'rt') as gz_file, open(output_zipped.removesuffix(".gz"), 'w') as out_file:
+            for line in gz_file:
+                if 'GeneID' in line:
+                    out_file.write(line)
+        os.remove(output_zipped)
+        print(f"Extracted to {output_file}!\n")
+
 
 # FUNCTION: Download Xenbase GPI, genepage to gene id mapping, and ortholog mapping files
 # Contains Xenbase URLs

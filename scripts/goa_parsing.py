@@ -325,7 +325,7 @@ def populate_maps(gaf_in, species=None):
 
 # FUNCTION: Filter GAF and return path of new filtered GAF
 def filter_gaf(gaf_in, create_copy=True, filter_values=None, filter_col=None):
-    print(f"\nFiltering {os.path.basename(gaf_in)} on {gaf_columns[filter_col]} ...")
+    print(f"\nFiltering {os.path.basename(gaf_in)} on {gaf_columns[filter_col]}...")
     gaf_name = os.path.basename(gaf_in)[:-4]   # remove extension
     gaf_out = os.path.join(gaf_dir, gaf_name + "_filtered.tmp")
 
@@ -511,7 +511,7 @@ def match_ortho_to_xenbase(fields, matched, species):
         xb_data = xen_ncbi_map[xen_ncbi]
 
         with open(matched, 'a') as m:
-            m.write(f"Xenbase\t{xb_data['xenbase_id']}\t{xb_data['symbol']}\t{fields['qualifier']}\t{fields['go_id']}\t{PLACEHOLDER_REF}\t{EVIDENCE}\tUniProtKB:{uniprot_id}\t{fields['aspect']}\t{xb_data['name']}\t{xb_data['synonyms']}\t{xb_data['object_type']}\t{TAXON_ID}\t{DATE}\t{SOURCE}\n")  #\t{fields['annotation_extension']}\t{fields['gene_product_id']}
+            m.write(f"Xenbase\t{xb_data['xenbase_id']}\t{xb_data['symbol']}\t{fields['qualifier']}\t{fields['go_id']}\t{PLACEHOLDER_REF}\t{EVIDENCE}\tUniProtKB:{uniprot_id}\t{fields['aspect']}\t{xb_data['name']}\t{xb_data['synonyms']}\t{xb_data['object_type']}\t{TAXON_ID}\t{DATE}\t{SOURCE}\t{fields['annotation_extension']}\t{fields['gene_product_id']}\n")
 
 # FUNCTION: Collapses annotation lines that only differ on the uniprot/source. Uniprots and sources are concatenated into a string
 def collapse_uniprots_by_line(input_gaf):
