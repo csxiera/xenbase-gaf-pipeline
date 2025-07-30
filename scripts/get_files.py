@@ -10,6 +10,11 @@ from tqdm import tqdm
 
 # NOTE: URL strings may change in the future! Update EBI/uniprot/xenbase URL string in appropriate function if/when this happens
 
+# Expected download times (as of July 2025):
+#   - goa_uniprot_all.gaf.gz (~4hrs, 21GB)
+#   - species-specific gafs (~18 min each)
+#   - remaining files (>1 min each)
+
 # FUNCTION: Make input folders if they dont yet exist
 def set_folders():
     os.makedirs(DATA_DIR, exist_ok=True)
