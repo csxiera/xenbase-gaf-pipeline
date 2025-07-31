@@ -1,12 +1,13 @@
 import os, csv
 
 HOME = os.path.expanduser("~/xenbase-gaf-pipeline")
-input_dir = os.path.join(HOME, "output-files/ortho-gafs")
+#input_dir = os.path.join(HOME, "output-files")
+input_dir = os.path.join(HOME, "input-files/goa-gafs")
 
 #file_name = "Xenopus.GOA.Extracted.2025-07-18.gaf"
-#file_name = "Human.GOA.Extracted.2025-07-18.gaf"
+file_name = "Human.GOA.Extracted.2025-07-30.gaf"
 #file_name = "Master_Orthologs.gaf"
-file_name = "Xenbase_from_Human.gaf"
+#file_name = "Xenbase_from_Human.gaf"
 
 input_file = os.path.join(input_dir, file_name)
 output_file = os.path.join(HOME, "output-files/count_annotations.tmp")
@@ -23,7 +24,7 @@ with open(input_file, 'r', encoding='latin1') as f_in, \
     reader = csv.reader(f_in, delimiter='\t')
     writer = csv.writer(f_out, delimiter='\t')
     writer.writerow(f"! Annotation file to count: {input_file}\n")
-    if count_on_column != "all"
+    if count_on_column != "all":
         writer.writerow(f"! Counting annotations in {count_on_column} column with values matching one of the following: [{','.join(count_by_values)}]")
     else:
         writer.writerow(f"! Counting all annotations")
@@ -52,7 +53,7 @@ with open(input_file, 'r', encoding='latin1') as f_in, \
             "gene_product_id": fields[16]
         }
 
-        if count_on_column != "all"
+        if count_on_column != "all":
             if records[count_on_column] in count_by_values:
                 annotation_count += 1
                 writer.writerow(fields)

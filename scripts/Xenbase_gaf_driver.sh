@@ -6,8 +6,8 @@ source $VENV_HOME/bin/activate
 
 # -------------------- Set Variables --------------------
 # Set date to use: 
-#DATE=date+"%Y-%m-%d"   # Current date for new downloads
-DATE='2025-07-18'       # Past date to use previously downloaded files
+#DATE=$(date +"%Y-%m-%d")    # Current date for new downloads
+DATE='2025-07-30'          # Past date to use previously downloaded files
 
 # Set to true if download or extraction is required
 GET_FILES=false
@@ -18,9 +18,9 @@ if [ "$GET_FILES" = true ]; then
     TODAY=$(date +"%Y-%m-%d")
 
     if [ "$DATE" = "$TODAY" ]; then
-        python3 get_files.py --goa --extract --maps --xenbase --log     # Fresh download of all required files
+        python3 get_files.py --goa --extract --maps --xenbase --log    # Fresh download of all required files
     else
-        python3 get_files.py --extract --date "$DATE" #--log            # Re-extraction from previous goa download (assumes mapping/xenbase files already downloaded)
+        python3 get_files.py --extract --date "$DATE" --log            # Re-extraction from previous goa download (assumes mapping/xenbase files already downloaded)
     fi
 else
     echo "Skipping file download and extraction"

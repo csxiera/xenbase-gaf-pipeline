@@ -28,6 +28,7 @@ from datetime import date, datetime
 # NOTE: Original GOA_parsing.pl script translated & adapted into create_xenbase_gaf, parse_gaf, and match_to_xenbase functions
 
 # FUNCTION: Main logic to create xenbase & xenbase w ortholog GAFs
+# NOTE: Argument parsing and global variable declaration at bottome of script in "__main__"
 def main(dl_date, ortho_species):
     # List of ortholog species to process
     ortho_species_list = ortho_species
@@ -239,14 +240,14 @@ def populate_maps(gaf_in, species=None):
                 if xtrop:
                     xtrop_map[xtrop] = umbrella
                 if xlaevl:
-                    xlaevl_map[xlaevl] = umbrella
+                    xlaev_map[xlaevl] = umbrella
                 if xlaevs:
-                    xlaevs_map[xlaevs] = umbrella
+                    xlaev_map[xlaevs] = umbrella
             
             print(f"\nLoaded {len(xtrop_map)} X.trop IDs -> genepage IDs into map")
             #print_map(xtrop_map)
-            print(f"Loaded {len(xlaevl_map)} X.laev.L IDs -> genepage IDs into map")
-            print(f"Loaded {len(xlaevs_map)} X.laev.S IDs -> genepage IDs into map")
+            print(f"Loaded {len(xlaev_map)} X.laev IDs -> genepage IDs into map")
+            #print_map(xlaev_map)
 
         # Populate ortholog lookup maps:
         with open(xenopus_orthologs, 'r', encoding=encoding) as f_in:
@@ -396,8 +397,11 @@ def write_gaf_header(gaf_output):
 
 # FUNCTION: Create Xenbase matched & unmatched GAFs and provenance file ('matched' + original db and uniprot info) (Adapted from original GOA_parsing perl script)
 def create_xenbase_gaf(gaf_in, output_dir):
-    def wrapper(fields):
+    def wrapper_a(fields):
         match_to_xenbase(fields, matched, provenance, unmatched)
+
+    def wrapper_b(fields):
+        split_by_xenopus(fields, xtrop_only, xlaev_only)
     
     print(f"\n------------------------ Creating Xenbase GAF ------------------------")
 
@@ -414,12 +418,29 @@ def create_xenbase_gaf(gaf_in, output_dir):
     write_gaf_header(matched)
     
     # Parse & match GAF with Xenbase GPI
-    parse_gaf(gaf_in, wrapper)
+    parse_gaf(gaf_in, wrapper_a)
     
     # Deduplicate on object id, qualifier, go id, evidence code, and with/from columns
     # Sort by symbol then go id
     clean(matched, header_lines=26, dedup=True, dedup_cols=[1,3,4,6,7], sort=True, sort_cols=[2,4])
     clean(provenance, dedup=True, dedup_cols=[1,3,4,6,7], sort=True, sort_cols=[2,4])
+
+    print(f"\n------------ Splitting Xenbase GAF into X.trop & X.laev files ------------")
+
+    xtrop_only = os.path.join(output_dir, f'Xenbase_Xtrop_Only.gaf')
+    xlaev_only = os.path.join(output_dir, f'Xenbase_Xlaev_Only.gaf')
+
+    # Remove output files if they already exist
+    for file in [xtrop_only, xlaev_only]:
+        if file and os.path.exists(file):
+            os.remove(file)
+
+    # Write Xenbase header to output GAFs
+    write_gaf_header(xtrop_only)
+    write_gaf_header(xlaev_only)
+    
+    # Parse & match GAF with Xenbase GPI
+    parse_gaf(matched, wrapper_b)
 
 # FUNCTION: Parse GAF and pass fields into matching function (Adapted from original GOA_parsing perl script)
 def parse_gaf(gaf_in, process_func):
@@ -436,7 +457,7 @@ def parse_gaf(gaf_in, process_func):
 
             records = {
                 "db": fields[0],
-                "uniprot_id": fields[1],
+                "object_id": fields[1],
                 "symbol": fields[2],
                 "qualifier": fields[3],
                 "go_id": fields[4],
@@ -460,7 +481,7 @@ def parse_gaf(gaf_in, process_func):
 # Matched & provenance output will ONLY contain annotations where a xenbase gene ID was found
 # Unmatched output will ONLY contain annotations where NO xenbase genes were found
 def match_to_xenbase(fields, matched, provenance=None, unmatched=None):
-    uniprot_id = fields["uniprot_id"]
+    uniprot_id = fields["object_id"]
     if uniprot_id in xen_uniprot_map:
         xb_data = xen_uniprot_map[uniprot_id]
 
@@ -476,15 +497,30 @@ def match_to_xenbase(fields, matched, provenance=None, unmatched=None):
 
         if provenance:                
             with open(provenance, 'a') as p:
-                p.write(f"Xenbase\t{xb_data['xenbase_id']}\t{xb_data['symbol']}\t{fields['qualifier']}\t{fields['go_id']}\t{fields['db_ref']}\t{fields['evidence']}\t{fields['with_from']}\t{fields['aspect']}\t{xb_data['name']}\t{xb_data['synonyms']}\t{fields['object_type']}\t{fields['taxon']}\t{fields['date']}\t{fields['assigned_by']}\t{fields['annotation_extension']}\t{fields['db']}:{fields['uniprot_id']}\n")
+                p.write(f"Xenbase\t{xb_data['xenbase_id']}\t{xb_data['symbol']}\t{fields['qualifier']}\t{fields['go_id']}\t{fields['db_ref']}\t{fields['evidence']}\t{fields['with_from']}\t{fields['aspect']}\t{xb_data['name']}\t{xb_data['synonyms']}\t{fields['object_type']}\t{fields['taxon']}\t{fields['date']}\t{fields['assigned_by']}\t{fields['annotation_extension']}\t{fields['db']}:{fields['object_id']}\n")
     else:
         if unmatched:
             with open(unmatched, 'a') as u:
-                u.write(f"{fields['db']}:{fields['uniprot_id']}\t{fields['symbol']}\t{fields['qualifier']}\t{fields['go_id']}\t{fields['db_ref']}\t{fields['evidence']}\t{fields['with_from']}\t{fields['aspect']}\t{fields['object_name']}\t{fields['object_synonyms']}\t{fields['object_type']}\t{fields['taxon']}\t{fields['date']}\t{fields['assigned_by']}\t{fields['annotation_extension']}\t{fields['gene_product_id']}\n")    
+                u.write(f"{fields['db']}:{fields['object_id']}\t{fields['symbol']}\t{fields['qualifier']}\t{fields['go_id']}\t{fields['db_ref']}\t{fields['evidence']}\t{fields['with_from']}\t{fields['aspect']}\t{fields['object_name']}\t{fields['object_synonyms']}\t{fields['object_type']}\t{fields['taxon']}\t{fields['date']}\t{fields['assigned_by']}\t{fields['annotation_extension']}\t{fields['gene_product_id']}\n")    
 
 # FUNCTION: Split xenbase GAF into x.trop & x.laev specific files
-def split_by_xenopus():
-    print()
+def split_by_xenopus(fields, xtrop_file, xlaev_file):
+    xb_gene_id = fields["object_id"]
+
+    ordered_fields = [
+    "db", "object_id", "symbol", "qualifier", "go_id", "db_ref", "evidence",
+    "with_from", "aspect", "object_name", "object_synonyms", "object_type",
+    "taxon", "date", "assigned_by", "annotation_extension", "gene_product_id"
+    ]
+
+    line = "\t".join(fields[key] for key in ordered_fields)
+
+    if xb_gene_id in xtrop_map:
+        with open(xtrop_file, 'a') as xtrop:
+            xtrop.write(f"{line}\n")
+    elif xb_gene_id in xlaev_map:
+        with open(xlaev_file, 'a') as xlaev:
+            xlaev.write(f"{line}\n")
 
 # FUNCTION: Sub xenbase info into matching ortholog annotations 
 def modify_ortho_annotations(ortho_gaf, output_dir, species):
@@ -508,7 +544,8 @@ def modify_ortho_annotations(ortho_gaf, output_dir, species):
 
 # FUNCTION: Find rows in ortholog GAF where uniprot can be mapped to a xenbase ID. Sub in xenbase info and change annotation evidence to "ISO"
 def match_ortho_to_xenbase(fields, matched, species):
-    uniprot_id = fields["uniprot_id"]
+    xen_ncbi = None
+    uniprot_id = fields["object_id"]
 
     if uniprot_id in ortho_uniprot_map:
         ortho_ncbi = ortho_uniprot_map[uniprot_id]["ncbi_id"]
@@ -519,8 +556,8 @@ def match_ortho_to_xenbase(fields, matched, species):
         PLACEHOLDER_REF = "GO_REF:PLACEHOLDER"
         TAXON_ID = "taxon:8364"
         EVIDENCE = "ISO"
-        SOURCE = species
-        #SOURCE = "Xenbase"
+        #SOURCE = species
+        SOURCE = "Xenbase"
         DATE = date.today().strftime("%Y%m%d")
         xb_data = xen_ncbi_map[xen_ncbi]
 
@@ -678,6 +715,7 @@ if __name__ == "__main__":
     if args.log:
         log = open("goa-parsing.log", "wt")
         sys.stdout = log
+        sys.sterr = log
 
     # ---------------------------- Global Variable Setup ----------------------------
     HOME = os.path.expanduser("~/xenbase-gaf-pipeline")
@@ -702,14 +740,13 @@ if __name__ == "__main__":
 
     # Define maps
     global xen_uniprot_map, xen_ncbi_map, xen_to_ortho_lookup
-    global xtrop_map, xlaevl_map, xlaevs_map
+    global xtrop_map, xlaev_map
     global ortho_to_xen_lookup, ortho_uniprot_map, ortho_ncbi_map
     xen_uniprot_map = {}                # key = xenopus uniprot id: contains ncbi id, xenbase gene id, symbol, name, synonyms, & go ids
     xen_ncbi_map = {}                   # key = xenopus ncbi id: contains xenbase gene id, symbol, name, synonyms & uniprots
     xen_to_ortho_lookup = {}            # key = ortho species, ortholog ncbi id: contains xenopus ncbi ids
     xtrop_map = {}                      # key = x.trop gene id; contains xenbase genepage id
-    xlaevl_map = {}                     # key = x.laev.L gene id; contains xenbase genepage id
-    xlaevs_map = {}                     # key = x.laev.S gene id; contains xenbase genepage id
+    xlaev_map = {}                      # key = x.laev(.L/.S) gene id; contains xenbase genepage id
     ortho_to_xen_lookup = {}            # key = xenopus ncbi id, ortho species: contains ortholog ncbi ids
     ortho_uniprot_map = {}              # key = ortholog uniprot id: contains ncbi id & go ids
     ortho_ncbi_map = {}                 # key = ortholog ncbi id: contains uniprot id
@@ -717,5 +754,6 @@ if __name__ == "__main__":
     # List of ortholog species to process
     # !!FIX: Pass in as arg??
     ortho_species = ["Human", "Mouse", "Rat", "Chicken", "Zebrafish", "Drosophila"]
+    #ortho_species = ["Human"]
 
     main(dl_date, ortho_species)
