@@ -10,7 +10,7 @@ import textwrap
 from datetime import date, datetime
 
 # AUTHOR: C. Lenz
-# DATE LAST UPDATED: 2025-07-30
+# DATE LAST UPDATED: 2025-07-31
 #
 # SCRIPT FUNCTION: 
 #   1. Create maps of uniprot <-> xenbase, xenbase <-> ortholog NCBIs, and uniprot <-> ortholog NCBIs
@@ -406,7 +406,7 @@ def create_xenbase_gaf(gaf_in, output_dir):
     print(f"\n------------------------ Creating Xenbase GAF ------------------------")
 
     matched = os.path.join(output_dir, f'Xenbase.gaf')
-    unmatched = os.path.join(output_dir, f'Unmatched_Annotations.gaf')
+    unmatched = os.path.join(output_dir, f'Unmatched_Annotations.tsv')
     provenance = os.path.join(output_dir, 'Annotation_Provenance.tsv')
 
     # Remove output files if they already exist (for clean write)
@@ -501,7 +501,7 @@ def match_to_xenbase(fields, matched, provenance=None, unmatched=None):
     else:
         if unmatched:
             with open(unmatched, 'a') as u:
-                u.write(f"{fields['db']}:{fields['object_id']}\t{fields['symbol']}\t{fields['qualifier']}\t{fields['go_id']}\t{fields['db_ref']}\t{fields['evidence']}\t{fields['with_from']}\t{fields['aspect']}\t{fields['object_name']}\t{fields['object_synonyms']}\t{fields['object_type']}\t{fields['taxon']}\t{fields['date']}\t{fields['assigned_by']}\t{fields['annotation_extension']}\t{fields['gene_product_id']}\n")    
+                u.write(f"{fields['db']}\t{fields['object_id']}\t{fields['symbol']}\t{fields['qualifier']}\t{fields['go_id']}\t{fields['db_ref']}\t{fields['evidence']}\t{fields['with_from']}\t{fields['aspect']}\t{fields['object_name']}\t{fields['object_synonyms']}\t{fields['object_type']}\t{fields['taxon']}\t{fields['date']}\t{fields['assigned_by']}\t{fields['annotation_extension']}\t{fields['gene_product_id']}\n")    
 
 # FUNCTION: Split xenbase GAF into x.trop & x.laev specific files
 def split_by_xenopus(fields, xtrop_file, xlaev_file):
@@ -751,9 +751,14 @@ if __name__ == "__main__":
     ortho_uniprot_map = {}              # key = ortholog uniprot id: contains ncbi id & go ids
     ortho_ncbi_map = {}                 # key = ortholog ncbi id: contains uniprot id
 
+    # Ensure output folders exist
+    os.makedirs(output_dir, exist_ok=True)
+    os.makedirs(os.path.join(output_dir, "ortho-gafs"), exist_ok=True)
+
     # List of ortholog species to process
     # !!FIX: Pass in as arg??
     ortho_species = ["Human", "Mouse", "Rat", "Chicken", "Zebrafish", "Drosophila"]
     #ortho_species = ["Human"]
 
+    print(f"Date & time of script execution: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}")
     main(dl_date, ortho_species)

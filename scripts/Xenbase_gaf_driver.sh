@@ -7,7 +7,7 @@ source $VENV_HOME/bin/activate
 # -------------------- Set Variables --------------------
 # Set date to use: 
 #DATE=$(date +"%Y-%m-%d")    # Current date for new downloads
-DATE='2025-07-30'          # Past date to use previously downloaded files
+DATE='2025-07-18'          # Past date to use previously downloaded files
 
 # Set to true if download or extraction is required
 GET_FILES=false

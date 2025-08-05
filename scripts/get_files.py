@@ -29,8 +29,10 @@ from tqdm import tqdm
 def set_folders():
     os.makedirs(DATA_DIR, exist_ok=True)
     os.makedirs(GAF_DIR, exist_ok=True)
+    os.makedirs(os.path.join(GAF_DIR, "original-goa"), exist_ok=True)
     os.makedirs(NCBI_MAP_DIR, exist_ok=True)
     os.makedirs(XB_DIR, exist_ok=True)
+    os.makedirs()
 
 # FUNCTION: Download GOA file with data for all species
 # Contains EBI URL
@@ -69,8 +71,7 @@ def extract_from_goa(species):
             with open(output_path, 'w') as outfile:
                 # Uses zgrep as its faster than gzip parsing in python
                 # pv utility tracks extraction process by tracking the bytes parsed in the input file
-                # FIX!!: Remove path to pv once installed by kamran
-                cmd = f"pv -p -t -e -r {input_path} | zgrep -a '{taxon_pattern}'"       #export PATH=$HOME/.local/bin:$PATH && 
+                cmd = f"pv -p -t -e -r {input_path} | zgrep -a '{taxon_pattern}'"
                 subprocess.run(cmd, shell=True, stdout=outfile, check=True)
 
             print(f"{target.capitalize()} successfully extracted into {output_file}!\n")
@@ -98,53 +99,48 @@ def download_maps():
         #Build URL
         url = f'https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/idmapping/by_organism/{species_name}_{species_taxon}_idmapping.dat.gz'
         
-        output_file = f"{target.capitalize()}_NCBI_Mapping.tsv"
-        output_zipped = os.path.join(NCBI_MAP_DIR, f"{output_file}.gz")
+        map_file = f"{target.capitalize()}_NCBI_Mapping.tsv"
+        map_zipped = os.path.join(NCBI_MAP_DIR, f"{map_file}.gz")
         # chunk size = <BYTE SIZE> (To modify number of bytes streamed in a chunk during download; default = 10*1024*1024 (10MB))
 
-        download_w_progress(url, output_zipped)
-
-        with gzip.open(output_zipped, 'rt') as gz_file, open(output_zipped.removesuffix(".gz"), 'w') as out_file:
-            for line in gz_file:
-                if 'GeneID' in line:
-                    out_file.write(line)
-        os.remove(output_zipped)
-        print(f"Extracted to {output_file}!\n")
+        download_w_progress(url, map_zipped)
+        unzip(map_zipped, line_filter=lambda line: "GeneID" in line)
 
 # FUNCTION: Download Xenbase GPI, genepage to gene id mapping, and ortholog mapping files
 # Contains Xenbase URLs
 def download_xenbase():
     print("Downloading Xenbase files...")
 
-    # Download GPI file
+    # Download GPI file & unzip
     gpi_url = 'https://download.xenbase.org/xenbase/GenePageReports/xenbase.gpi.gz'
-    gpi_output = os.path.join(XB_DIR, "Xenbase.gpi.gz")
-    download_w_progress(gpi_url, gpi_output)
-    
-    # Unzip GPI and remove .gz version
-    with gzip.open(gpi_output, 'rb') as gz_file, open(gpi_output.removesuffix(".gz"), 'wb') as out_file:
-        shutil.copyfileobj(gz_file, out_file)
-    os.remove(gpi_output)
-    print(f"Extracted to {gpi_output.removesuffix(".gz")}!")
+    gpi_filepath = os.path.join(XB_DIR, "Xenbase.gpi.gz")
+    download_w_progress(gpi_url, gpi_filepath)
+    unzip(gpi_filepath)
 
     # Download genepage to gene ID map
     # NOTE: line 11651 may be uncorrectly tabbed ("vma22  .L" instead of "vma22.L"); Check before using if redownloading
     genepage_to_gene_url = 'https://download.xenbase.org/xenbase/GenePageReports/XenbaseGenepageToGeneIdMapping_chd.txt'
-    genepage_to_gene_output = os.path.join(XB_DIR, "Xenbase_Genepage_To_GeneId.txt")
-    download_w_progress(genepage_to_gene_url, genepage_to_gene_output)
+    genepage_to_gene_filepath = os.path.join(XB_DIR, "Xenbase_Genepage_To_GeneId.txt")
+    download_w_progress(genepage_to_gene_url, genepage_to_gene_filepath)
 
     # Download genepage to ortholog NCBI ID map
     ortholog_map_url = 'https://xenbase-bio1.ucalgary.ca/cgi-bin/reports/genepage_entrez_orthologs.cgi'
-    ortholog_map_output = os.path.join(NCBI_MAP_DIR, "Xenopus_NCBI_Orthologs-test.tsv")
-    download_w_progress(ortholog_map_url, ortholog_map_output)
+    ortholog_map_filepath = os.path.join(NCBI_MAP_DIR, "Xenopus_NCBI_Orthologs.tsv")
+    download_w_progress(ortholog_map_url, ortholog_map_filepath)
     
     # Replace header with modified species names
-    tmp_path = ortholog_map_output + ".tmp"
-    with open(ortholog_map_output, 'r', encoding='utf-8') as infile, open(tmp_path, 'w', encoding='utf-8') as outfile:
+    tmp_path = ortholog_map_filepath + ".tmp"
+    with open(ortholog_map_filepath, 'r', encoding='utf-8') as infile, open(tmp_path, 'w', encoding='utf-8') as outfile:
         outfile.write("umbrella_id\ttxtrop\thuman\tmouse\trat\tzebrafish\tchicken\tdrosophila\tworm\n")
         lines = infile.readlines()      # Skip original header
         outfile.writelines(lines[1:])
-    os.replace(tmp_path, ortholog_map_output)
+    os.replace(tmp_path, ortholog_map_filepath)
+
+    # Download current xenbase gaf & unzip:
+    gaf_url = 'https://download.xenbase.org/xenbase/GenePageReports/xenbase.gaf.gz'
+    gaf_filepath = os.path.join(XB_DIR, "Xenbase.gaf.gz")
+    download_w_progress(gaf_url, gaf_filepath)
+    unzip(gaf_filepath)
 
 # FUNCTION: Show progress while downloading
 def download_w_progress(url, output_path, chunk_size=10*1024*1024):
@@ -166,6 +162,26 @@ def download_w_progress(url, output_path, chunk_size=10*1024*1024):
 
     tqdm.write(f"Saved to {os.path.basename(output_path)}!\n")
 
+# FUNCTION: Unzip .gz file; Removes .gz from filename if new filename not specified
+def unzip(filepath, out_file=None, line_filter=None):
+    if not out_file:
+        outpath = filepath.removesuffix(".gz")
+    else:
+        outpath = out_file
+
+    mode = 'rt' if line_filter else 'rb'
+
+    with gzip.open(filepath, mode) as in_file, open(outpath, 'w' if line_filter else 'wb') as out_file:
+        if line_filter:
+            for line in in_file:
+                if line_filter(line):
+                    out_file.write(line)
+        else:
+            shutil.copyfileobj(in_file, out_file)
+
+    os.remove(filepath)
+    print(f"Extracted to {outpath}!\n")
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--goa', action='store_true')
@@ -182,7 +198,7 @@ if __name__ == "__main__":
         sys.stdout = log
         sys.stderr = log    #tqdm & requests use sterr for progress bars
 
-    # Define file paths (NOTE: If these are modified, must also change paths in goa_parsing.py)
+    # Define folder paths (NOTE: If these are modified, must also change paths in goa_parsing.py)
     HOME = Path.home()
     DATA_DIR = f"{HOME}/xenbase-gaf-pipeline/input-files"
     GAF_DIR = f"{DATA_DIR}/goa-gafs"
@@ -191,7 +207,7 @@ if __name__ == "__main__":
     set_folders()
 
     # Set date and downloaded GOA filename
-    print(f"Date Run: {datetime.today().strftime('%Y-%m-%d')}")
+    print(f"Date & time of script execution: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}")
     DATE = args.date if args.date else datetime.today().strftime('%Y-%m-%d')
     GOA_FILENAME = f"goa_uniprot_all.{DATE}.gaf.gz"
 
