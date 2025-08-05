@@ -14,7 +14,9 @@ More detailed information about each program is found in the script itself
 Xenbase_gaf_driver.sh should be set up to use the current date, with GET_FILES = true when used in a cron job  
 - To rerun GAF pipeline without redownloading files, change current date to previous download date and set GET_FILES = false  
 
-Input folder structure is set up in `get_files.py`. Output folder structure is set up in `goa_parsing.py`. Program expects `xenbase-gaf-pipeline` project folder to be in HOME directory
+Input folder structure is set up in `get_files.py`. Output folder structure is set up in `goa_parsing.py`. Program expects `xenbase-gaf-pipeline` project folder to be in HOME directory  
+
+Helper scripts are designed to be run as standalone programs. The `__main__` section contains example calls demonstrating how to call the helper functions for different usages.
 
 ## Input/Output
 
