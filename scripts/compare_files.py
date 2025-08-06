@@ -102,16 +102,17 @@ if __name__ == "__main__":
     # NOTE: All output files (if created) will be saved to output-files/analysis
     
     HOME = Path.home()
-    output_dir = os.path.join(HOME, "xenbase-gaf-pipeline/output-files/analysis")
-    os.makedirs(output_dir, exist_ok=True)
+    ANALYSIS_DIR = os.path.join(HOME, "xenbase-gaf-pipeline/output-files/analysis")
+    os.makedirs(ANALYSIS_DIR, exist_ok=True)
 
     # Use to compare 'old' and 'new' xenbase gafs
     #run_compare(preset="xenbase-vs-new", columns=[1,4,5])       # Object ID, GO ID, Evidence Code
 
     # Use to compare non-preset files:
-    filepath_a = os.path.join(HOME, '')
-    filepath_b = os.path.join(HOME, '')
-    #run_compare(file_a=filepath_a, file_b=filepath_b)
+    filepath_a = os.path.join(HOME, "xenbase-gaf-pipeline/output-files/Xenbase.EBI.only.2.2.gaf")
+    filepath_b = os.path.join(HOME, "GOA_pipeline-master/xenbase.EBI.only.2.2.gaf")
+
+    run_compare(file_a=filepath_a, file_b=filepath_b, columns=[0,1,2,3,4,5,6])
 
     # Use to clean up {...}_Only_A/B.tmp files
     #remove_tmp_files(output_dir)

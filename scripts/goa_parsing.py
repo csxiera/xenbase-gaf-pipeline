@@ -10,7 +10,7 @@ import textwrap
 from datetime import date, datetime
 
 # AUTHOR: C. Lenz
-# DATE LAST UPDATED: 2025-07-31
+# DATE LAST UPDATED: 2025-08-06
 #
 # SCRIPT FUNCTION: 
 #   1. Create maps of uniprot <-> xenbase, xenbase <-> ortholog NCBIs, and uniprot <-> ortholog NCBIs
@@ -52,6 +52,8 @@ def main(dl_date, ortho_species):
     create_xenbase_gaf(xenopus_gaf, output_dir)
     xenbase_gaf = os.path.join(output_dir, "Xenbase.gaf")
     gzip_file(xenbase_gaf)
+
+    return
 
     # Create Xenbase with Ortholog GAFs for each species & compress
     for species in ortho_species_list:
@@ -192,6 +194,8 @@ def populate_maps(gaf_in, species=None):
                 DB_symbol = fields[2]
                 DB_Object_Name = fields[3]
                 DB_Object_Synonym = fields[4]
+                if DB_symbol== "atp1b3.S":
+                    print(f"DB Object synonym for atp1b3.S storing as: {DB_Object_Synonym}")
                 object_type = fields[5]
                 dbxref = fields[8]
                 uniprots = re.findall(r'Uni[Pp]rotKB:(.+?)(?:\||$)', dbxref)
@@ -228,7 +232,7 @@ def populate_maps(gaf_in, species=None):
         add_go_ids(gaf_in, xen_uniprot_map)
         #print_map(xen_uniprot_map)
 
-        with open(xb_genepage_to_geneid, 'r', encoding='utf-8') as f_in:
+        with open(xb_genepage_to_geneid, 'r', encoding=encoding) as f_in:
             reader = csv.reader(f_in, delimiter='\t')
             header = next(reader)
             for fields in reader:
@@ -420,12 +424,11 @@ def create_xenbase_gaf(gaf_in, output_dir):
     # Parse & match GAF with Xenbase GPI
     parse_gaf(gaf_in, wrapper_a)
     
-    # Deduplicate on object id, qualifier, go id, evidence code, and with/from columns
-    # Sort by symbol then go id
-    clean(matched, header_lines=26, dedup=True, dedup_cols=[1,3,4,6,7], sort=True, sort_cols=[2,4])
-    clean(provenance, dedup=True, dedup_cols=[1,3,4,6,7], sort=True, sort_cols=[2,4])
+    # Deduplicate on full line & sort by symbol then go id
+    clean(matched, header_lines=26, dedup=True, sort=True, sort_cols=[2,4])                 # dedup_cols=[1,2,3,4,5,6,7]
+    clean(provenance, dedup=True, sort=True, sort_cols=[2,4])
 
-    print(f"\n------------ Splitting Xenbase GAF into X.trop & X.laev files ------------")
+    # ------------ Splitting Xenbase GAF into X.trop & X.laev files ------------
 
     xtrop_only = os.path.join(output_dir, f'Xenbase_Xtrop_Only.gaf')
     xlaev_only = os.path.join(output_dir, f'Xenbase_Xlaev_Only.gaf')
@@ -710,12 +713,6 @@ if __name__ == "__main__":
 
     # Set date to today if no date flag was provided
     dl_date = args.date if args.date else datetime.today().strftime('%Y-%m-%d')
-    
-    # Redirect output to log file
-    if args.log:
-        log = open("goa-parsing.log", "wt")
-        sys.stdout = log
-        sys.sterr = log
 
     # ---------------------------- Global Variable Setup ----------------------------
     HOME = os.path.expanduser("~/xenbase-gaf-pipeline")
@@ -729,7 +726,7 @@ if __name__ == "__main__":
     output_dir = os.path.join(HOME, "output-files")
     
     global encoding
-    encoding = "latin1" # To handle accented characters
+    encoding = "utf-8"
 
     global gaf_columns, allowed_codes
     gaf_columns = ["DB", "DB Object ID", "DB Object Symbol", "Qualifier", "GO ID",
@@ -754,6 +751,13 @@ if __name__ == "__main__":
     # Ensure output folders exist
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(os.path.join(output_dir, "ortho-gafs"), exist_ok=True)
+
+    # Redirect output to log file
+    if args.log:
+        log_path = os.path.join(OUT_DIR, "script-logs/goa_parsing.log")
+        log = open(log_path, "wt")
+        sys.stdout = log
+        sys.sterr = log
 
     # List of ortholog species to process
     # !!FIX: Pass in as arg??

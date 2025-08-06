@@ -10,7 +10,7 @@ from pathlib import Path
 from tqdm import tqdm
 
 # AUTHOR: C. Lenz
-# DATE LAST UPDATED: 2025-07-30
+# DATE LAST UPDATED: 2025-08-06
 #
 # SCRIPT FUNCTION: 
 #   1. Download GOA GAF file and extract into species-specific gafs
@@ -25,14 +25,19 @@ from tqdm import tqdm
 #   - species-specific gafs (~18 min each)
 #   - remaining files (>1 min each)
 
-# FUNCTION: Make input folders if they dont yet exist
+# FUNCTION: Setup folders if they dont yet exist
 def set_folders():
-    os.makedirs(DATA_DIR, exist_ok=True)
-    os.makedirs(GAF_DIR, exist_ok=True)
-    os.makedirs(os.path.join(GAF_DIR, "original-goa"), exist_ok=True)
-    os.makedirs(NCBI_MAP_DIR, exist_ok=True)
-    os.makedirs(XB_DIR, exist_ok=True)
-    os.makedirs()
+    paths = [
+        DATA_DIR,
+        OUT_DIR,
+        os.path.join(OUT_DIR, "script-logs"),
+        GAF_DIR,
+        os.path.join(GAF_DIR, "original-goa"),
+        NCBI_MAP_DIR,
+        XB_DIR,
+    ]
+    for path in paths:
+        os.makedirs(path, exist_ok=True)
 
 # FUNCTION: Download GOA file with data for all species
 # Contains EBI URL
@@ -192,19 +197,22 @@ if __name__ == "__main__":
     parser.add_argument('--log', action='store_true')
     args = parser.parse_args()
 
-    # Redirect output to log file
-    if args.log:
-        log = open("get_files.log", "wt")
-        sys.stdout = log
-        sys.stderr = log    #tqdm & requests use sterr for progress bars
-
     # Define folder paths (NOTE: If these are modified, must also change paths in goa_parsing.py)
     HOME = Path.home()
     DATA_DIR = f"{HOME}/xenbase-gaf-pipeline/input-files"
+    OUT_DIR = f"{HOME}/xenbase-gaf-pipeline/output-files"
     GAF_DIR = f"{DATA_DIR}/goa-gafs"
     NCBI_MAP_DIR = f"{DATA_DIR}/ncbi-maps"
     XB_DIR = f"{DATA_DIR}/xenbase-files"
     set_folders()
+
+    # Redirect output to log file
+    if args.log:
+        log_path = os.path.join(OUT_DIR, "script-logs/get_files.log")
+        log = open(log_path, "wt")
+        sys.stdout = log
+        sys.stderr = log    #tqdm & requests use sterr for progress bars
+
 
     # Set date and downloaded GOA filename
     print(f"Date & time of script execution: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}")

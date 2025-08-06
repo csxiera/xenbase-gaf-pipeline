@@ -185,6 +185,9 @@ if __name__ == "__main__":
     evidence_codes=["IDA","IMP","ISS","ISO","TAS","NAS","IEA"]
     #run_count(preset="analysis", file_name=input_file, filter_column="evidence", filter_values="NAS", find_unique=True, find_in_column='assigned_by')
 
+    input_file = "Xenbase.EBI.only.NEW.2025-07-18_B_Only.tmp"
+    run_count(preset="analysis", file_name=input_file, find_unique=True, find_in_column="go_id")
+
     # Use for non-preset files (requires full file path):
     input_file = os.path.join(HOME, "GOA_pipeline/xenbase.EBI.only.2.2.gaf")
     #run_count(file_name=input_file)

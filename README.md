@@ -8,6 +8,8 @@ This repository contains scripts for building Gene Ontology Annotation files for
 4. `compare_files.py`         - HELPER: script to compare 2 files, writes differing lines to seperate files for analysis
 5. `count_annotations.py`     - HELPER: script to count the number of annotations in a file, with or without filtering applied
 
+NOTE: The subfolder `original-pipeline` contains adapted version of the original GOA Pipeline bash/perl scripts. These were used to verify whether the `xenbase.gaf` outputs from both pipelines are identical when provided with the same input files.  
+
 More detailed information about each program is found in the script itself
 
 ## Running Pipeline
