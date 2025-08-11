@@ -1,0 +1,23 @@
+Time of script execution: 2025-08-01 09:57:02
+Download date of GOA file to extract species GAFs from: 2025-07-30
+Extracting Xenopus annotations from 'goa_uniprot_all.2025-07-30.gaf.gz'...
+Xenopus successfully extracted into Xenopus.GOA.Extracted.2025-07-30.gaf!
+
+Extracting Human annotations from 'goa_uniprot_all.2025-07-30.gaf.gz'...
+Human successfully extracted into Human.GOA.Extracted.2025-07-30.gaf!
+
+Extracting Mouse annotations from 'goa_uniprot_all.2025-07-30.gaf.gz'...
+Mouse successfully extracted into Mouse.GOA.Extracted.2025-07-30.gaf!
+
+Extracting Rat annotations from 'goa_uniprot_all.2025-07-30.gaf.gz'...
+Rat successfully extracted into Rat.GOA.Extracted.2025-07-30.gaf!
+
+Extracting Chicken annotations from 'goa_uniprot_all.2025-07-30.gaf.gz'...
+Chicken successfully extracted into Chicken.GOA.Extracted.2025-07-30.gaf!
+
+Extracting Zebrafish annotations from 'goa_uniprot_all.2025-07-30.gaf.gz'...
+Zebrafish successfully extracted into Zebrafish.GOA.Extracted.2025-07-30.gaf!
+
+Extracting Drosophila annotations from 'goa_uniprot_all.2025-07-30.gaf.gz'...
+Drosophila successfully extracted into Drosophila.GOA.Extracted.2025-07-30.gaf!
+
