@@ -1,15 +1,16 @@
 # ------------------- GAF 2.2 Formatting -------------------
 
-OUTPUT_DIR=$HOME/xenbase-gaf-pipeline/output-files
-xb_gaf=$OUTPUT_DIR/Xenbase.gaf
+OUTPUT_DIR=$1
+input_gaf=$2
+output_gaf="${input_gaf%.gaf}.2.2.gaf"
 
 echo -e "Formatting for GAF v2.2...\n"
 
 # Filters out GOC and GO_Central annotations
-cat $xb_gaf | grep -av '^!' |grep -av 'GO_Central'|grep -av 'GOC'| sort | uniq > $OUTPUT_DIR/non-redundant.Xenbase.gaf.tmp
+cat $input_gaf | grep -av '^!' |grep -av 'GO_Central'|grep -av 'GOC'| sort | uniq > $OUTPUT_DIR/non-redundant.gaf.tmp
 
 # Steps 1-4 make the qualifier columns consistent with default GAF 2.2 relationships and changes the targets of self binding to pass GO quality checks:
-tmp=$OUTPUT_DIR/non-redundant.Xenbase.gaf.tmp
+tmp=$OUTPUT_DIR/non-redundant.gaf.tmp
 
 # Step 1a: If qualifier (column 4) is 'involved_in' and aspect (column 9) is 'P', change qualifer to 'acts_upstream_of_or_within'
 awk -F'\t' 'BEGIN{OFS="\t"}{if($4=="involved_in" && $9=="P"){$4="acts_upstream_of_or_within"}{print}}' $tmp > ${tmp}.new && mv ${tmp}.new $tmp
@@ -31,11 +32,10 @@ awk -F'\t' 'BEGIN{OFS="\t"}{if($5=="GO:0042803" && ($7=="ISS"||$7=="ISA"||$7=="I
 # Step 4b: Same as above but for 'GO:0051260'
 awk -F'\t' 'BEGIN{OFS="\t"}{if($5=="GO:0051260" && ($7=="ISS"||$7=="ISA"||$7=="ISO")){$8="Xenbase:"$2"|" $8}{print}}' $tmp > ${tmp}.new && mv ${tmp}.new $tmp
 
-# Sort, deduplicate, and remove temp files
-sort $tmp | uniq > $OUTPUT_DIR/Xenbase.EBI.only.gaf
-rm $tmp
+# Write header + deduplicate
+grep -a '^!' "$input_gaf" > "$output_gaf"
+sort "$tmp" | uniq >> "$output_gaf"
 
-# Copy GAF header from matched file to EBI only file
-ebi_final=$OUTPUT_DIR/Xenbase.EBI.only.2.2.gaf
-cat $xb_gaf|grep -a '^!' | cat - $OUTPUT_DIR/Xenbase.EBI.only.gaf > $ebi_final
-rm $OUTPUT_DIR/Xenbase.EBI.only.gaf
+# Clean up
+rm "$tmp"
+rm "$input_gaf"

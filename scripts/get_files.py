@@ -10,7 +10,6 @@ from pathlib import Path
 from tqdm import tqdm
 
 # AUTHOR: C. Lenz
-# DATE LAST UPDATED: 2025-08-06
 #
 # SCRIPT FUNCTION: 
 #   1. Download GOA GAF file and extract into species-specific gafs
@@ -41,13 +40,26 @@ def set_folders():
 
 # FUNCTION: Download GOA file with data for all species
 # Contains EBI URL
-def download_goa():
-    print("Downloading GOA file from EBI...")
-    url = f"https://ftp.ebi.ac.uk/pub/databases/GO/goa/UNIPROT/goa_uniprot_all.gaf.gz"
-    output_path = os.path.join(GAF_DIR, "original-goa", GOA_FILENAME)
-    # chunk size = <BYTE SIZE> (To modify number of bytes streamed in a chunk during download; default = 10*1024*1024 (10MB))
+def download_goa(args):
+    if args.xen_goa:
+        xtrop_url = "https://ftp.ebi.ac.uk/pub/contrib/goa/gp_association.8364_Xenopus_tropicalis.gaf.gz"
+        xtrop_path = os.path.join(GAF_DIR, "original-goa", f"8364_Xenopus_tropicalis.{DATE}.gaf.gz")
+        download_w_progress(xtrop_url, output_path=xtrop_path)
 
-    download_w_progress(url, output_path=output_path)
+        xlaev_url = "https://ftp.ebi.ac.uk/pub/contrib/goa/gp_association.8355_Xenopus_laevis.gaf.gz"
+        xlaev_path = os.path.join(GAF_DIR, "original-goa", f"8355_Xenopus_laevis.{DATE}.gaf.gz")
+        download_w_progress(xlaev_url, output_path=xlaev_path)
+
+        xenopus_combined = os.path.join(GAF_DIR, f"Xenopus.GOA.Curated.{DATE}.gaf.gz")
+        combine_annotations(xtrop_path, xlaev_path, xenopus_combined)
+
+    elif args.ortho_goa:
+        print("Downloading GOA file from EBI...")
+        goa_url = f"https://ftp.ebi.ac.uk/pub/databases/GO/goa/UNIPROT/goa_uniprot_all.gaf.gz"
+        output_path = os.path.join(GAF_DIR, "original-goa", GOA_FILENAME)
+        # chunk size = <BYTE SIZE> (To modify number of bytes streamed in a chunk during download; default = 10*1024*1024 (10MB))
+        download_w_progress(goa_url, output_path=output_path)
+
 
 # FUNCTION: Extract GAF data for each species into seperate files
 # NOTE: Extraction progress is not logged to get_files.log -> will output to terminal
@@ -187,9 +199,26 @@ def unzip(filepath, out_file=None, line_filter=None):
     os.remove(filepath)
     print(f"Extracted to {outpath}!\n")
 
+# FUNCTION: Adds annotations between 2 (GAF) files together
+def combine_annotations(file_1, file_2, output_file, encoding="utf-8"):
+    filter_func = lambda line: not line.startswith("!")
+    temp1 = unzip(file_1, line_filter=filter_func)
+    temp2 = unzip(file_2, line_filter=filter_func)
+
+    try:
+        with open(temp1, 'r', encoding=encoding) as f1, \
+             open(temp2, 'r', encoding=encoding) as f2, \
+             open(output_file, 'w', encoding=encoding) as out:
+            out.writelines(f1.readlines())
+            out.writelines(f2.readlines())
+    finally:
+        os.remove(temp1)
+        os.remove(temp2)
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--goa', action='store_true')
+    parser.add_argument('--xen_goa', action='store_true')
+    parser.add_argument('--ortho_goa', action='store_true')
     parser.add_argument('--extract', nargs='?', const='all', help='Species name or "all"')
     parser.add_argument('--maps', action='store_true')
     parser.add_argument('--xenbase', action='store_true')
@@ -231,7 +260,7 @@ if __name__ == "__main__":
     }
 
     # Download/extract files specified
-    if args.goa and not args.date: download_goa()       # For new goa file download
+    if (args.xen_goa or args.ortho_goa) and not args.date: download_goa(args)       # For new goa file downloads
     if args.extract:
         if args.date:
             print(f"Download date of GOA file to extract species GAFs from: {DATE}")

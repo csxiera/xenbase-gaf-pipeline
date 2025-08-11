@@ -3,7 +3,7 @@ from pathlib import Path
 
 def read_lines(filepath, columns=None):
     lines = {}
-    with open(filepath, 'r', encoding='latin1') as f:
+    with open(filepath, 'r', encoding='utf-8') as f:
         for line in f:
             if line.startswith('!'):
                 continue
@@ -81,7 +81,6 @@ def remove_tmp_files(folder_path):
 
 if __name__ == "__main__":
     # AUTHOR: C. Lenz
-    # DATE LAST UPDATED: 2025-08-05
     #
     # SCRIPT FUNCTION: Compare 2 files (Usually GAF), write "unique" lines in each to seperate files named {file_name}_A/B_Only.tmp
     #
@@ -109,8 +108,8 @@ if __name__ == "__main__":
     #run_compare(preset="xenbase-vs-new", columns=[1,4,5])       # Object ID, GO ID, Evidence Code
 
     # Use to compare non-preset files:
-    filepath_a = os.path.join(HOME, "xenbase-gaf-pipeline/output-files/Xenbase.EBI.only.2.2.gaf")
-    filepath_b = os.path.join(HOME, "GOA_pipeline-master/xenbase.EBI.only.2.2.gaf")
+    filepath_a = os.path.join(HOME, "xenbase-gaf-pipeline/output-files/xenbase.EBI.only.2.2.gaf")
+    filepath_b = os.path.join(HOME, "xenbase-gaf-pipeline/output-files/original-pipeline-output/xenbase.EBI.only.2.2.gaf")
 
     run_compare(file_a=filepath_a, file_b=filepath_b, columns=[0,1,2,3,4,5,6])
 

@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# From original GOA pipeline (see 'scripts/original-goa-scripts')
+# From original GOA pipeline
 # Modified for output comparison with new GAF processing pipeline
 
 # use strict;

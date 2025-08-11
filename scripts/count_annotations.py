@@ -5,7 +5,7 @@ def count(input_file, filter_column, filter_values=None, find_unique_values=Fals
     annotation_count = 0
     unique_values = set()
 
-    with open(input_file, 'r', encoding='latin1') as f_in:
+    with open(input_file, 'r', encoding='utf-8') as f_in:
         reader = csv.reader(f_in, delimiter='\t')
         writer = None
 
@@ -17,7 +17,7 @@ def count(input_file, filter_column, filter_values=None, find_unique_values=Fals
                 output_file = None
             else:
                 print(f"Matching annotations will be written to {output_file}\n")
-                f_out = open(output_file, 'w', encoding='latin1', newline='')
+                f_out = open(output_file, 'w', encoding='utf-8', newline='')
                 writer = csv.writer(f_out, delimiter='\t')
                 writer.writerow([f"! Annotation file to filter: {input_file}"])
                 writer.writerow([f"! Filtering annotations in {filter_column} column with values matching one of the following: [{','.join(filter_values)}]"])
@@ -143,7 +143,6 @@ def remove_tmp_files(folder_path):
 
 if __name__ == "__main__":
     # AUTHOR: C. Lenz
-    # DATE LAST UPDATED: 2025-08-05
     #
     # SCRIPT FUNCTION: Filtering and counting of annotations in GAF files
     #

@@ -8,7 +8,7 @@ INPUT_DIR=$MAIN_DIR/input-files
 OUTPUT_DIR=$MAIN_DIR/output-files/original-pipeline-output
 DATE='2025-07-18'   # Download/extraction date of GOA files to use
 
-XB_GAF=$INPUT_DIR/goa-gafs/Xenopus.GOA.Extracted.$DATE.gaf
+XB_GAF=$INPUT_DIR/goa-gafs/Xenopus.GOA.Curated.$DATE.gaf
 
 echo -e "\nRunning parsing script...\n"
 perl $SCRIPT_DIR/GOA_parsing_adapted.pl $XB_GAF $DATE
@@ -45,13 +45,13 @@ awk -F'\t' 'BEGIN{OFS="\t"}{if($5=="GO:0042803" && ($7=="ISS"||$7=="ISA"||$7=="I
 awk -F'\t' 'BEGIN{OFS="\t"}{if($5=="GO:0051260" && ($7=="ISS"||$7=="ISA"||$7=="ISO")){$8="Xenbase:"$2"|" $8}{print}}' $tmp > ${tmp}.new && mv ${tmp}.new $tmp
 
 # Sort, deduplicate, and remove temp files
-sort $tmp | uniq > $OUTPUT_DIR/Xenbase.EBI.only.$DATE.gaf
+sort $tmp | uniq > $OUTPUT_DIR/xenbase.EBI.only.$DATE.gaf
 rm $non_redundant $tmp
 
 # Copy GAF header from matched file to EBI only file
-ebi_final=$OUTPUT_DIR/Xenbase.EBI.only.2.2.gaf
-cat $matched|grep -a '^!' | cat - $OUTPUT_DIR/Xenbase.EBI.only.$DATE.gaf > $ebi_final
-rm $OUTPUT_DIR/Xenbase.EBI.only.$DATE.gaf
+ebi_final=$OUTPUT_DIR/xenbase.EBI.only.2.2.gaf
+cat $matched|grep -a '^!' | cat - $OUTPUT_DIR/xenbase.EBI.only.$DATE.gaf > $ebi_final
+rm $OUTPUT_DIR/xenbase.EBI.only.$DATE.gaf
 
 # Get summary stats for EBI GAF final file
 ebi_final_summary=$OUTPUT_DIR/EBI_only_2.2_Summary.txt
