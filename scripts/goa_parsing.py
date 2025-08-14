@@ -1,4 +1,5 @@
 import argparse
+import ast
 import os
 import sys
 import gzip
@@ -12,7 +13,7 @@ from datetime import date, datetime
 # AUTHOR: C. Lenz
 #
 # SCRIPT FUNCTION: 
-#   1. Create maps of uniprot <-> xenbase, xenbase <-> ortholog NCBIs, and uniprot <-> ortholog NCBIs
+#   1. Create maps of uniprot <-> xenbase, xenbase <-> ortholog NCBIs, and uniprot <-> ortholog NCBIs (when needed)
 #   2. Create Xenbase gaf from xenopus goa gaf:
 #       a. filter out uniprots not mapped to Xenbase gene IDs
 #       b. replace uniprot ID with Xenbase gene IDs
@@ -22,53 +23,53 @@ from datetime import date, datetime
 #       b. filter out annotations with uniprots not mapped to xenbase
 #       c. replace ortholog uniprot ID with Xenbase gene ID (for X.trop) move ortholog uniprot ID to 'with/from' field
 #   4. Collapse ortholog annotations into unique gene + GO term pairs, with ALL ortholog uniprots listed in 'with/from' field
-#   5. Add collapsed annotations to Xenbase gaf (after NOCTUA pipeline)
+#   5. Add collapsed annotations to Xenbase gaf (after processing by NOCTUA pipeline)
 #
-# NOTE: Original GOA_parsing.pl script translated & adapted into create_xenbase_gaf, parse_gaf, and match_to_xenbase functions
+# NOTE: Original GOA_parsing.pl script translated & adapted into parse_gaf, create_xenbase_gaf, and match_to_xenbase functions
 
 # ---------------------------------------- Main Functions ----------------------------------------
 
 # FUNCTION: Main function to create xenbase GAF
-def gaf_creation(dl_date):
+def main_gaf(dl_date):
     # Date xenopus files were downloaded/extracted
-    input_date = dl_date
     print(f"Download date of xenopus GOA file used: {dl_date}")
 
     # Populate Xenopus maps
-    xenopus_gaf = os.path.join(gaf_dir, f'Xenopus.GOA.Curated.{input_date}.gaf')
+    xenopus_gaf = os.path.join(gaf_dir, f'Xenopus.GOA.Curated.{dl_date}.gaf')
     populate_maps(xenopus_gaf)
 
     # Create Xenbase GAF from GPI & GOA
     create_xenbase_gaf(xenopus_gaf, output_dir)
 
 # FUNCTION: Main function to add ortholog 'ISO' annotations into xenbase GAF
-def add_orthologs(dl_date, ortho_species):
-    # Split post-noctua xenbase gaf into x.trop & x.laev files                  # CHECK!!: noctau output may need unzipping
-    xenbase_gaf = os.path.join(output_dir, "xenbase.EBI.only.2.2.gaf")          # FIX!!: Change to xenbase.gaf once using noctua output
+def main_ortho(dl_date, ortho_species):
+    # Date ortholog GOA files were downloaded/extracted
+    print(f"Download date of ortholog GOA files used: {dl_date}")
+
+    # Split post-noctua xenbase gaf into x.trop & x.laev files                  # CHECK!!: noctua output may need unzipping first
+    xenbase_gaf = os.path.join(output_dir, "xenbase.EBI.only.2.2.gaf")          # FIX!!: Change to noctua output filename if different
     populate_maps(xenbase_gaf, split=True)
     split_xenbase_gaf(xenbase_gaf, output_dir, zip=True)
-    
-    # Date ortholog files were downloaded/extracted
-    input_date = dl_date
-    print(f"Download date of ortholog GOA files used: {dl_date}\n")
-    ortho_species_list = ortho_species
+
+    # Populate xenbase <-> ortholog lookup maps
+    populate_maps(xenbase_gaf, ortho_lookup=True)
+    os.makedirs(os.path.join(output_dir, "ortho-gafs"), exist_ok=True)
 
     # Modify ortholog GAFs for each species with xenbase IDs
-    for species in ortho_species_list:
+    for species in ortho_species:
         # Clear ortholog maps (for clean population)
         ortho_uniprot_map.clear()
-        #ortho_ncbi_map.clear()
 
-        print(f"--------------- Processing {species} Ortholog Annotations ---------------")
+        print(f"\n--------------- Processing {species} Ortholog Annotations ---------------")
 
         # Filter ortholog GAF files to remove invalid evidence codes before populating maps
-        gaf_suffix = f'GOA.Extracted.{input_date}.gaf'
+        gaf_suffix = f'GOA.Extracted.{dl_date}.gaf'
         ortho_gaf = os.path.join(gaf_dir, f'{species}.{gaf_suffix}')
         filter_gaf(ortho_gaf, create_copy=True, filter_col=6, filter_values=allowed_codes)        
 
         # Populate ortholog maps for given species
         filtered_ortho_gaf = os.path.join(gaf_dir, f'{species}.{gaf_suffix}')
-        populate_maps(filtered_ortho_gaf, species)
+        populate_maps(filtered_ortho_gaf, species=species)
 
         # Filter ortholog gaf to only include annotations with xenopus ncbi gene id matches
         filtered_ortho_gaf = filter_gaf(filtered_ortho_gaf, create_copy=False, filter_col=1, filter_values=ortho_uniprot_map.keys())
@@ -77,7 +78,7 @@ def add_orthologs(dl_date, ortho_species):
         xen_from_ortho = modify_ortho_annotations(filtered_ortho_gaf, output_dir, species)
 
         # Combine ortholog annotations with Xenbase GAF
-        xen_w_ortho = os.path.join(output_dir, f"xenbase.plus.{species}.gaf")
+        xen_w_ortho = os.path.join(output_dir, f"xenbase.plus.{species.lower()}.gaf")
         combine_annotations(xenbase_gaf, xen_from_ortho, xen_w_ortho)
 
         # Compress to .gz, remove uncompressed version
@@ -90,7 +91,9 @@ def add_orthologs(dl_date, ortho_species):
     master_ortho_gaf = f'{output_dir}/ortho-gafs/Master_Orthologs.gaf'
     open(master_ortho_gaf, 'w').close()
 
-    for species in ortho_species_list:
+    print(f"\n--------------- Adding Ortholog Annotations ---------------\n")
+
+    for species in ortho_species:
         print(f"Adding {species} ISO annotations to master ortholog file...\n")
         single_ortho_gaf = f'{output_dir}/ortho-gafs/Xenbase_from_{species}.gaf'
 
@@ -115,7 +118,8 @@ def add_orthologs(dl_date, ortho_species):
 # ------------------------------------- Supporting Functions --------------------------------------
 
 # FUNCTION: Create uniprot/ncbi dictionaries to map xenopus annotation data to orthologs
-def populate_maps(gaf_in, species=None, split=False):
+# Uses flags to avoid populating maps when not required
+def populate_maps(gaf_in, ortho_lookup=None, species=None, split=False):
     
     # Get NCBI ID from DB_Xref string in GPI file
     def extract_ncbi_id(dbxref):
@@ -165,8 +169,8 @@ def populate_maps(gaf_in, species=None, split=False):
                 break
             print(f"{key}: {info}")
 
-    # Prepare xenopus maps (used in both xenbase gaf creation & adding ortholog annotations)
-    if not split:
+    # Prepare xenbase <-> uniprot/ncbi maps (used in both xenbase gaf creation & adding ortholog annotations)
+    if not species and not split:
         gpi = os.path.join(xb_dir, 'Xenbase.gpi')
 
         # Populate xenopus uniprot and xenopus ncbi -> xenbase info maps
@@ -216,16 +220,10 @@ def populate_maps(gaf_in, species=None, split=False):
         add_go_ids(gaf_in, xen_uniprot_map)
         #print_map(xen_uniprot_map)
 
-    # Prepare ortholog maps
-    if species and not split:
+    # Prepare xenbase <-> ortholog NCBI maps
+    if ortho_lookup:
         xenopus_orthologs = os.path.join(ncbi_map_dir, 'Xenopus_NCBI_Orthologs.tsv')
-        ortho_mapping_file = os.path.join(ncbi_map_dir, f"{species}_NCBI_Mapping.tsv")
 
-        if not os.path.exists(ortho_mapping_file):
-            print(f"ERROR: No NCBI mapping file found for {species} at '{ortho_mapping_file}'")
-            print(f"Skipping {species} Uniprot & NCBI map creation")
-            return
-        
         # Populate xenbase ortholog lookup map:
         with open(xenopus_orthologs, 'r', encoding=encoding) as f_in:
             reader = csv.reader(f_in, delimiter='\t')
@@ -257,6 +255,15 @@ def populate_maps(gaf_in, species=None, split=False):
             print(f"\nLoaded {len(ortho_to_xen_lookup['Human'])} Ortholog NCBI IDs (Ex. Human) -> Xenopus NCBI IDs into map")
             #print_map(ortho_to_xen_lookup['Human'])
 
+    # Prepare ortholog uniprot map (NOTE: Dependent on ortho lookup maps; repopulated for each species)
+    if species:
+        ortho_mapping_file = os.path.join(ncbi_map_dir, f"{species}_NCBI_Mapping.tsv")
+
+        if not os.path.exists(ortho_mapping_file):
+            print(f"ERROR: No NCBI mapping file found for {species} at '{ortho_mapping_file}'")
+            print(f"Skipping {species} Uniprot & NCBI map creation")
+            return
+        
         # Populate ortholog uniprot & ncbi maps:
         with open(ortho_mapping_file, 'r', encoding=encoding) as f_in:
             reader = csv.reader(f_in, delimiter='\t')
@@ -273,37 +280,15 @@ def populate_maps(gaf_in, species=None, split=False):
 
                 ortho_uniprot_map[uniprot_id] = ncbi_id
 
-                '''if ncbi_id in ortho_ncbi_map:
-                    ortho_ncbi_map[ncbi_id].append(uniprot_id)
-                else:
-                    ortho_ncbi_map[ncbi_id] = [uniprot_id]'''
-
             print(f"\nLoaded {len(ortho_uniprot_map)} {species} UniProt IDs -> NCBI IDs into map")
             #print_map(ortho_uniprot_map)
-            '''print(f"\nLoaded {len(ortho_ncbi_map)} {species} NCBI IDs -> Uniprot IDs into map")
-            #print_map(ortho_ncbi_map)'''
 
         # Add GO IDs and drop uniprots not in ortholog gaf (from uniprot map)
         add_go_ids(gaf_in, ortho_uniprot_map)
         #print_map(ortho_uniprot_map)
 
-        '''# Drop uniprots not in ortholog gaf (from NCBI map)
-        for ncbi_id in list(ortho_ncbi_map.keys()):
-            uniprot_list = ortho_ncbi_map[ncbi_id]
-            valid_uniprots = []
-
-            for uniprot in uniprot_list:
-                if uniprot in ortho_uniprot_map.keys():
-                    valid_uniprots.append(uniprot)
-            
-            if valid_uniprots:
-                ortho_ncbi_map[ncbi_id] = valid_uniprots
-            else:
-                del ortho_ncbi_map[ncbi_id]
-        #print_map(ortho_ncbi_map)'''
-
     # Prepare maps for splitting xenbase gaf by xenopus species
-    elif split:
+    if split:
         xb_genepage_to_geneid = os.path.join(xb_dir, 'Xenbase_Genepage_To_GeneId.txt')
 
         # Populate x.trop & x.laev gene id maps
@@ -328,12 +313,9 @@ def populate_maps(gaf_in, species=None, split=False):
             print(f"Loaded {len(xlaev_map)} X.laev IDs -> genepage IDs into map")
             #print_map(xlaev_map)
 
-    else: 
-        print("Error: Invalid use of populate maps!")
-
 # FUNCTION: Filter GAF and return path of new filtered GAF
 def filter_gaf(gaf_in, create_copy=True, filter_values=None, filter_col=None):
-    print(f"Filtering {os.path.basename(gaf_in)} on {gaf_columns[filter_col]}...\n")
+    print(f"\nFiltering {os.path.basename(gaf_in)} on {gaf_columns[filter_col]}...")
     gaf_name = os.path.basename(gaf_in)[:-4]   # remove extension
     gaf_out = os.path.join(gaf_dir, gaf_name + "_filtered.tmp")
 
@@ -457,7 +439,7 @@ def create_xenbase_gaf(gaf_in, output_dir, zip=True):
                 with open(unmatched, 'a') as u:
                     u.write(f"{fields['db']}\t{fields['object_id']}\t{fields['symbol']}\t{fields['qualifier']}\t{fields['go_id']}\t{fields['db_ref']}\t{fields['evidence']}\t{fields['with_from']}\t{fields['aspect']}\t{fields['object_name']}\t{fields['object_synonyms']}\t{fields['object_type']}\t{fields['taxon']}\t{fields['date']}\t{fields['assigned_by']}\t{fields['annotation_extension']}\t{fields['gene_product_id']}\n")    
    
-    print(f"\n------------------------ Creating Xenbase GAF ------------------------")
+    print(f"\n------------------------ Creating Xenbase GAF ------------------------\n")
 
     matched = os.path.join(output_dir, f'xenbase.EBI.only.gaf')
     unmatched = os.path.join(output_dir, f'unmatched_annotations.tsv')
@@ -478,7 +460,7 @@ def create_xenbase_gaf(gaf_in, output_dir, zip=True):
     clean(matched, header_lines=26, dedup=True, sort=True, sort_cols=[2,4])                 # dedup_cols=[1,2,3,4,5,6,7]
     clean(provenance, dedup=True, sort=True, sort_cols=[2,4])
 
-    # Optional: Zip output
+    # Optional: zip output
     if zip:
         gzip_file(matched)
         gzip_file(provenance, delete_input=True)
@@ -522,7 +504,7 @@ def split_xenbase_gaf(xenbase_gaf, output_dir, zip=True):
     # Parse & match GAF with Xenbase GPI
     parse_gaf(xenbase_gaf, wrapper)
 
-    # Optional: Zip output
+    # Optional: zip output
     if zip:
         gzip_file(xtrop_only, delete_input=True)
         gzip_file(xlaev_only, delete_input=True)
@@ -560,6 +542,7 @@ def modify_ortho_annotations(ortho_gaf, output_dir, species):
     if os.path.exists(matched):
         os.remove(matched)
 
+    print(f"\nParsing {species} GOA for Xenbase matches...\n")
     parse_gaf(ortho_gaf, wrapper)
 
     # Remove duplicate lines and collapse uniprots for matching annotations into 1 line
@@ -605,7 +588,7 @@ def collapse_uniprots_by_line(input_gaf):
             temp.write('\t'.join(new_row) + '\n')
 
     shutil.move(temp_file, input_gaf)
-    print(f"Concatenated uniprots in {basename}\n")
+    print(f"Concatenated uniprots in {basename}")
     #clean(input_gaf, header_lines = 0, dedup=False, sort=True, sort_cols = [2,4])
 
 # FUNCTION: Adds annotations between 2 (GAF) files together
@@ -710,29 +693,39 @@ def gzip_file(input_path, delete_input=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--create_gaf', action='store_true')
-    parser.add_argument('--add_orthos', action='store_true')
+    parser.add_argument('--add_orthos', nargs='?', help='List of ortholog species to process')
     parser.add_argument('--date', nargs='?', help='Date of download for files used')
     parser.add_argument('--log', action='store_true')
     args = parser.parse_args()
 
-    # Set date to today if no date flag was provided
-    dl_date = args.date if args.date else datetime.today().strftime('%Y-%m-%d')
-
-    # ---------------------------- Global Variable Setup ----------------------------
+    # ---------------------------- Variable Setup ----------------------------
     HOME = os.path.expanduser("~/xenbase-gaf-pipeline")
 
     # Define folder paths
-    global gaf_dir, ncbi_map_dir, xb_dir, output_dir
+    global input_dir, gaf_dir, ncbi_map_dir, xb_dir, output_dir
     input_dir = os.path.join(HOME, "input-files")
     gaf_dir = os.path.join(input_dir, "goa-gafs")
     ncbi_map_dir = os.path.join(input_dir, "ncbi-maps")
     xb_dir = os.path.join(input_dir, "xenbase-files")
     output_dir = os.path.join(HOME, "output-files")
-    
-    global encoding
-    encoding = "utf-8"
 
-    global gaf_columns, allowed_codes
+    # Ensure folders exist
+    for folder in [input_dir, gaf_dir, ncbi_map_dir, xb_dir, output_dir]:
+        os.makedirs(folder, exist_ok=True)
+
+    # Redirect output to log file
+    if args.log:
+        log_path = os.path.join(HOME, "output-files/script-logs/goa_parsing.log")
+        if args.create_gaf:
+            log = open(log_path, "wt")
+        elif args.add_orthos:
+            log = open(log_path, "at")
+        sys.stdout = log
+        sys.sterr = log
+    
+    # Set gaf properties
+    global encoding, gaf_columns, allowed_codes
+    encoding = "utf-8"
     gaf_columns = ["DB", "DB Object ID", "DB Object Symbol", "Qualifier", "GO ID",
       "DB:Reference", "Evidence Code", "With/From", "Aspect", "DB Object Name",
       "DB Object Synonym", "DB Object Type", "Taxon", "Date", "Assigned By",
@@ -744,116 +737,22 @@ if __name__ == "__main__":
     global xen_to_ortho_lookup, ortho_to_xen_lookup, ortho_uniprot_map
     xen_uniprot_map = {}                # key = xenopus uniprot id: contains ncbi id, xenbase gene id, symbol, name, synonyms, & go ids
     xen_ncbi_map = {}                   # key = xenopus ncbi id: contains xenbase gene id, symbol, name, synonyms & uniprots
-    xen_to_ortho_lookup = {}            # key = ortho species, ortholog ncbi id: contains xenopus ncbi ids
     xtrop_map = {}                      # key = x.trop gene id; contains xenbase genepage id
     xlaev_map = {}                      # key = x.laev(.L/.S) gene id; contains xenbase genepage id
+    xen_to_ortho_lookup = {}            # key = ortho species, ortholog ncbi id: contains xenopus ncbi ids
     ortho_to_xen_lookup = {}            # key = xenopus ncbi id, ortho species: contains ortholog ncbi ids
     ortho_uniprot_map = {}              # key = ortholog uniprot id: contains ncbi id & go ids
 
-    # Ensure output folders exist
-    os.makedirs(output_dir, exist_ok=True)
-    os.makedirs(os.path.join(output_dir, "ortho-gafs"), exist_ok=True)
-
-    # Redirect output to log file
-    if args.log:
-        log_path = os.path.join(output_dir, "script-logs/goa_parsing.log")
-        log = open(log_path, "wt")
-        sys.stdout = log
-        sys.sterr = log
-
-    print(f"Date & time of script execution: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}")
-
-    # List of ortholog species to process
-    # !!FIX: Pass in??
-    ortho_species = ["Human", "Mouse", "Rat", "Chicken", "Zebrafish", "Drosophila"]
-
+    # Set file download date to today if no date flag was provided
+    dl_date = args.date if args.date else datetime.today().strftime('%Y-%m-%d')
+    print(f"\nDate & time of script execution: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}")
+    
     if args.create_gaf:
-        create_xenbase_gaf(dl_date)
+        main_gaf(dl_date)
     elif args.add_orthos:
-        add_orthologs(dl_date, ortho_species)
+        ortho_species = ast.literal_eval(args.add_orthos)
+        main_ortho(dl_date, ortho_species)
     else:
         print("""Error: Must specify processing option:
         --create_gaf    -> Use to create xenbase GAF from EBI's GOA files
         --add_orthos    -> Use to add ortholog annotations to xenbase gaf (NOTE: use after noctua pipeline)""")
-
-'''# FUNCTION: Main logic to create xenbase & xenbase w ortholog GAFs
-# NOTE: Argument parsing and global variable declaration at bottome of script in "__main__"
-def main(dl_date, ortho_species):
-    # List of ortholog species to process
-    ortho_species_list = ortho_species
-    # Date files were downloaded/extracted
-    input_date = dl_date
-    print(f"Download date of files used: {dl_date}")
-
-    # ---------------------------- Data Processing ----------------------------
-
-    # Populate Xenopus maps
-    xenopus_gaf = os.path.join(gaf_dir, f'Xenopus.GOA.Curated.{input_date}.gaf')
-    populate_maps(xenopus_gaf)
-
-    # Create Xenbase GAF from GPI & compress
-    create_xenbase_gaf(xenopus_gaf, output_dir)
-    xenbase_gaf = os.path.join(output_dir, "Xenbase.gaf")
-    gzip_file(xenbase_gaf)
-
-    # Filter ortholog GAF files to remove invalid evidence codes
-    gaf_suffix = f'GOA.Extracted.{input_date}.gaf'
-    for species in ortho_species_list:
-        ortho_gaf = os.path.join(gaf_dir, f'{species}.{gaf_suffix}')
-        filter_gaf(ortho_gaf, create_copy=True, filter_col=6, filter_values=allowed_codes)
-
-    # Create Xenbase with Ortholog GAFs for each species & compress
-    for species in ortho_species_list:
-        ortho_uniprot_map = {}
-        ortho_ncbi_map = {}
-
-        print(f"--------------- Processing {species} Ortholog Annotations ---------------")
-
-        # Populate ortholog maps for given species
-        filtered_ortho_gaf = os.path.join(gaf_dir, f'{species}.{gaf_suffix}')
-        populate_maps(filtered_ortho_gaf, species)
-
-        # Filter ortholog gaf to only include annotations with xenopus ncbi gene id matches
-        filtered_ortho_gaf = filter_gaf(filtered_ortho_gaf, create_copy=False, filter_col=1, filter_values=ortho_uniprot_map.keys())
-        #clean(filtered_ortho_gaf, sort=True, sort_cols=[2,1,4]) # sort by symbol, then uniprot, then go id
-
-        # Map ortholog annotations to Xenbase gene IDs and sub Xenbase info into ortholog GAF
-        xen_from_ortho = modify_ortho_annotations(filtered_ortho_gaf, output_dir, species)
-
-        # Combine ortholog annotations with Xenbase GAF
-        xen_w_ortho = os.path.join(output_dir, f"Xenbase_w_{species}.gaf")
-        combine_annotations(xenbase_gaf, xen_from_ortho, xen_w_ortho)
-
-        # Compress to .gz, remove uncompressed version
-        gzip_file(xen_w_ortho, delete_input=True)
-
-    # Remove filtered gafs (.tmp) from input goa gaf folder
-    remove_tmp_files(gaf_dir)
-
-    # Create master ortholog file to compile all ortholog annotations in
-    master_ortho_gaf = f'{output_dir}/ortho-gafs/Master_Orthologs.gaf'
-    open(master_ortho_gaf, 'w').close()
-
-    for species in ortho_species_list:
-        print(f"Adding {species} ISO annotations to master ortholog file...\n")
-        single_ortho_gaf = f'{output_dir}/ortho-gafs/Xenbase_from_{species}.gaf'
-
-        # Add annotations from given species into master ortholog file
-        combine_annotations(master_ortho_gaf, single_ortho_gaf, master_ortho_gaf)
-
-        # Collapse duplicate lines by combining uniprots/sources into single strings
-        collapse_uniprots_by_line(master_ortho_gaf)
-
-    clean(master_ortho_gaf, header_lines = 0, dedup=False, sort=True, sort_cols = [2,4])
-
-    # Add all orthologs to Xenbase GAF
-    xen_w_ortho = f'{output_dir}/Xenbase_w_Orthologs.gaf'
-    combine_annotations(xenbase_gaf, master_ortho_gaf, xen_w_ortho)
-    clean(xen_w_ortho, header_lines = 26, dedup=False, sort=True, sort_cols = [2,6,4])
-
-    # Compress final files, remove uncompressed version
-    gzip_file(xen_w_ortho, delete_input=True)
-    gzip_file(master_ortho_gaf, delete_input=False)
-
-    print("Finished!\n")
-'''

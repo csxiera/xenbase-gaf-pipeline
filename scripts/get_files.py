@@ -27,13 +27,13 @@ from tqdm import tqdm
 # FUNCTION: Setup folders if they dont yet exist
 def set_folders():
     paths = [
-        DATA_DIR,
-        OUT_DIR,
-        os.path.join(OUT_DIR, "script-logs"),
-        GAF_DIR,
-        os.path.join(GAF_DIR, "original-goa"),
-        NCBI_MAP_DIR,
-        XB_DIR,
+        input_dir,
+        os.path.join(out_dir, "script-logs"),
+        gaf_dir,
+        os.path.join(gaf_dir, "original-goa"),
+        ncbi_map_dir,
+        xb_dir,
+        out_dir
     ]
     for path in paths:
         os.makedirs(path, exist_ok=True)
@@ -41,30 +41,29 @@ def set_folders():
 # FUNCTION: Download GOA file with data for all species
 # Contains EBI URL
 def download_goa(args):
-    if args.xen_goa:
+    if args.xen_download:
         xtrop_url = "https://ftp.ebi.ac.uk/pub/contrib/goa/gp_association.8364_Xenopus_tropicalis.gaf.gz"
-        xtrop_path = os.path.join(GAF_DIR, "original-goa", f"8364_Xenopus_tropicalis.{DATE}.gaf.gz")
+        xtrop_path = os.path.join(gaf_dir, "original-goa", f"8364_Xenopus_tropicalis.{DATE}.gaf.gz")
         download_w_progress(xtrop_url, output_path=xtrop_path)
 
         xlaev_url = "https://ftp.ebi.ac.uk/pub/contrib/goa/gp_association.8355_Xenopus_laevis.gaf.gz"
-        xlaev_path = os.path.join(GAF_DIR, "original-goa", f"8355_Xenopus_laevis.{DATE}.gaf.gz")
+        xlaev_path = os.path.join(gaf_dir, "original-goa", f"8355_Xenopus_laevis.{DATE}.gaf.gz")
         download_w_progress(xlaev_url, output_path=xlaev_path)
 
-        xenopus_combined = os.path.join(GAF_DIR, f"Xenopus.GOA.Curated.{DATE}.gaf.gz")
+        xenopus_combined = os.path.join(gaf_dir, f"Xenopus.GOA.Curated.{DATE}.gaf")
         combine_annotations(xtrop_path, xlaev_path, xenopus_combined)
 
-    elif args.ortho_goa:
+    elif args.ortho_download:
         print("Downloading GOA file from EBI...")
         goa_url = f"https://ftp.ebi.ac.uk/pub/databases/GO/goa/UNIPROT/goa_uniprot_all.gaf.gz"
-        output_path = os.path.join(GAF_DIR, "original-goa", GOA_FILENAME)
+        output_path = os.path.join(gaf_dir, "original-goa", GOA_FILENAME)
         # chunk size = <BYTE SIZE> (To modify number of bytes streamed in a chunk during download; default = 10*1024*1024 (10MB))
         download_w_progress(goa_url, output_path=output_path)
-
 
 # FUNCTION: Extract GAF data for each species into seperate files
 # NOTE: Extraction progress is not logged to get_files.log -> will output to terminal
 def extract_from_goa(species):
-    input_path = os.path.join(GAF_DIR, "original-goa", GOA_FILENAME)
+    input_path = os.path.join(gaf_dir, "original-goa", GOA_FILENAME)
     if not os.path.exists(input_path):
         print(f"ERROR: '{input_path}' does not exist")
         return
@@ -82,7 +81,7 @@ def extract_from_goa(species):
         taxon_pattern = r'\|'.join([f"taxon:{taxon}" for taxon in taxon_list])
 
         output_file = f"{target.capitalize()}.GOA.Extracted.{DATE}.gaf"
-        output_path = os.path.join(GAF_DIR, output_file)
+        output_path = os.path.join(gaf_dir, output_file)
 
         try:
             with open(output_path, 'w') as outfile:
@@ -96,7 +95,45 @@ def extract_from_goa(species):
         except subprocess.CalledProcessError as e:
             print(f"Extraction failed for {target.capitalize()}: {e}")
 
-# FUNCTION: Download NCBI to uniprot mapping files
+# FUNCTION: Download files from Xenbase: Xenbase GPI, genepage to gene id mapping, and ortholog mapping files
+# Contains Xenbase URLs
+def download_xenbase(args):
+    print("Downloading Xenbase files...")
+
+    if args.xen_download:
+        # Download GPI file & unzip
+        gpi_url = 'https://download.xenbase.org/xenbase/GenePageReports/xenbase.gpi.gz'
+        gpi_filepath = os.path.join(xb_dir, "Xenbase.gpi.gz")
+        download_w_progress(gpi_url, gpi_filepath)
+        unzip(gpi_filepath)
+
+    if args.ortho_download:
+        # Download genepage to gene ID map
+        # NOTE: line 11651 may be uncorrectly tabbed ("vma22  .L" instead of "vma22.L"); Check before using if redownloading
+        genepage_to_gene_url = 'https://download.xenbase.org/xenbase/GenePageReports/XenbaseGenepageToGeneIdMapping_chd.txt'
+        genepage_to_gene_filepath = os.path.join(xb_dir, "Xenbase_Genepage_To_GeneId.txt")
+        download_w_progress(genepage_to_gene_url, genepage_to_gene_filepath)
+
+        # Download genepage to ortholog NCBI ID map
+        ortholog_map_url = 'https://xenbase-bio1.ucalgary.ca/cgi-bin/reports/genepage_entrez_orthologs.cgi'
+        ortholog_map_filepath = os.path.join(ncbi_map_dir, "Xenopus_NCBI_Orthologs.tsv")
+        download_w_progress(ortholog_map_url, ortholog_map_filepath)
+        
+        # Replace header with modified species names
+        tmp_path = ortholog_map_filepath + ".tmp"
+        with open(ortholog_map_filepath, 'r', encoding='utf-8') as infile, open(tmp_path, 'w', encoding='utf-8') as outfile:
+            outfile.write("umbrella_id\ttxtrop\thuman\tmouse\trat\tzebrafish\tchicken\tdrosophila\tworm\n")
+            lines = infile.readlines()      # Skip original header
+            outfile.writelines(lines[1:])
+        os.replace(tmp_path, ortholog_map_filepath)
+
+    '''# Download current xenbase gaf & unzip:
+    gaf_url = 'https://download.xenbase.org/xenbase/GenePageReports/xenbase.gaf.gz'
+    gaf_filepath = os.path.join(xb_dir, "Xenbase.gaf.gz")
+    download_w_progress(gaf_url, gaf_filepath)
+    unzip(gaf_filepath)'''
+
+# FUNCTION: Download NCBI to uniprot mapping files for orthologs
 # Contains uniprot URL
 def download_maps():
     print("Downloading mapping files...")
@@ -117,47 +154,11 @@ def download_maps():
         url = f'https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/idmapping/by_organism/{species_name}_{species_taxon}_idmapping.dat.gz'
         
         map_file = f"{target.capitalize()}_NCBI_Mapping.tsv"
-        map_zipped = os.path.join(NCBI_MAP_DIR, f"{map_file}.gz")
+        map_zipped = os.path.join(ncbi_map_dir, f"{map_file}.gz")
         # chunk size = <BYTE SIZE> (To modify number of bytes streamed in a chunk during download; default = 10*1024*1024 (10MB))
 
         download_w_progress(url, map_zipped)
         unzip(map_zipped, line_filter=lambda line: "GeneID" in line)
-
-# FUNCTION: Download Xenbase GPI, genepage to gene id mapping, and ortholog mapping files
-# Contains Xenbase URLs
-def download_xenbase():
-    print("Downloading Xenbase files...")
-
-    # Download GPI file & unzip
-    gpi_url = 'https://download.xenbase.org/xenbase/GenePageReports/xenbase.gpi.gz'
-    gpi_filepath = os.path.join(XB_DIR, "Xenbase.gpi.gz")
-    download_w_progress(gpi_url, gpi_filepath)
-    unzip(gpi_filepath)
-
-    # Download genepage to gene ID map
-    # NOTE: line 11651 may be uncorrectly tabbed ("vma22  .L" instead of "vma22.L"); Check before using if redownloading
-    genepage_to_gene_url = 'https://download.xenbase.org/xenbase/GenePageReports/XenbaseGenepageToGeneIdMapping_chd.txt'
-    genepage_to_gene_filepath = os.path.join(XB_DIR, "Xenbase_Genepage_To_GeneId.txt")
-    download_w_progress(genepage_to_gene_url, genepage_to_gene_filepath)
-
-    # Download genepage to ortholog NCBI ID map
-    ortholog_map_url = 'https://xenbase-bio1.ucalgary.ca/cgi-bin/reports/genepage_entrez_orthologs.cgi'
-    ortholog_map_filepath = os.path.join(NCBI_MAP_DIR, "Xenopus_NCBI_Orthologs.tsv")
-    download_w_progress(ortholog_map_url, ortholog_map_filepath)
-    
-    # Replace header with modified species names
-    tmp_path = ortholog_map_filepath + ".tmp"
-    with open(ortholog_map_filepath, 'r', encoding='utf-8') as infile, open(tmp_path, 'w', encoding='utf-8') as outfile:
-        outfile.write("umbrella_id\ttxtrop\thuman\tmouse\trat\tzebrafish\tchicken\tdrosophila\tworm\n")
-        lines = infile.readlines()      # Skip original header
-        outfile.writelines(lines[1:])
-    os.replace(tmp_path, ortholog_map_filepath)
-
-    # Download current xenbase gaf & unzip:
-    gaf_url = 'https://download.xenbase.org/xenbase/GenePageReports/xenbase.gaf.gz'
-    gaf_filepath = os.path.join(XB_DIR, "Xenbase.gaf.gz")
-    download_w_progress(gaf_url, gaf_filepath)
-    unzip(gaf_filepath)
 
 # FUNCTION: Show progress while downloading
 def download_w_progress(url, output_path, chunk_size=10*1024*1024):
@@ -198,6 +199,7 @@ def unzip(filepath, out_file=None, line_filter=None):
 
     os.remove(filepath)
     print(f"Extracted to {outpath}!\n")
+    return outpath
 
 # FUNCTION: Adds annotations between 2 (GAF) files together
 def combine_annotations(file_1, file_2, output_file, encoding="utf-8"):
@@ -217,31 +219,31 @@ def combine_annotations(file_1, file_2, output_file, encoding="utf-8"):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--xen_goa', action='store_true')
-    parser.add_argument('--ortho_goa', action='store_true')
+    parser.add_argument('--xen_download', action='store_true')
+    parser.add_argument('--ortho_download', action='store_true')
     parser.add_argument('--extract', nargs='?', const='all', help='Species name or "all"')
-    parser.add_argument('--maps', action='store_true')
-    parser.add_argument('--xenbase', action='store_true')
     parser.add_argument('--date', help='Optional date in YYYY-MM-DD format (Use if regenerating species-specific GAFs from older GOA download)')
     parser.add_argument('--log', action='store_true')
     args = parser.parse_args()
 
     # Define folder paths (NOTE: If these are modified, must also change paths in goa_parsing.py)
-    HOME = Path.home()
-    DATA_DIR = f"{HOME}/xenbase-gaf-pipeline/input-files"
-    OUT_DIR = f"{HOME}/xenbase-gaf-pipeline/output-files"
-    GAF_DIR = f"{DATA_DIR}/goa-gafs"
-    NCBI_MAP_DIR = f"{DATA_DIR}/ncbi-maps"
-    XB_DIR = f"{DATA_DIR}/xenbase-files"
+    HOME = os.path.expanduser("~/xenbase-gaf-pipeline")
+    input_dir = os.path.join(HOME, "input-files")
+    gaf_dir = os.path.join(input_dir, "goa-gafs")
+    ncbi_map_dir = os.path.join(input_dir, "ncbi-maps")
+    xb_dir = os.path.join(input_dir, "xenbase-files")
+    out_dir = os.path.join(HOME, "output-files")
     set_folders()
 
     # Redirect output to log file
     if args.log:
-        log_path = os.path.join(OUT_DIR, "script-logs/get_files.log")
-        log = open(log_path, "wt")
+        log_path = os.path.join(out_dir, "script-logs/get_files.log")
+        if args.xen_download:
+            log = open(log_path, "wt")
+        else:
+            log = open(log_path, "at")
         sys.stdout = log
         sys.stderr = log    #tqdm & requests use sterr for progress bars
-
 
     # Set date and downloaded GOA filename
     print(f"Date & time of script execution: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}")
@@ -260,10 +262,13 @@ if __name__ == "__main__":
     }
 
     # Download/extract files specified
-    if (args.xen_goa or args.ortho_goa) and not args.date: download_goa(args)       # For new goa file downloads
-    if args.extract:
+    if args.xen_download or args.ortho_download:
+        download_goa(args)
+        download_xenbase(args)
+        if args.ortho_download:
+            download_maps(args)
+
+    elif args.extract:
         if args.date:
             print(f"Download date of GOA file to extract species GAFs from: {DATE}")
         extract_from_goa(args.extract)
-    if args.xenbase: download_xenbase()
-    if args.maps: download_maps()
