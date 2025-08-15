@@ -3,13 +3,13 @@ This repository contains scripts for building Gene Ontology Annotation files for
 
 ## Scripts
 1. `run_pipeline.yaml`        - DRIVER: script to run full pipeline
-1. `xenbase_gaf_driver.sh`    - DRIVER: script to build Xenbase GAF from GPI & GOA files
-2. `add_orthologs_driver.sh`  - DRIVER: script to add ortholog annotations to Xenbase GAF
-3. `get_files.py`             - MAIN: script to download various files used in pipeline
-4. `goa_parsing.py`           - MAIN: script used to parse through GOA GAF files, create Xenbase GAF, and find ortholog annotations
-5. `gaf2.2_mods.sh`           - MAIN: script used to modify Xenbase GAF output to be consistent with GAF version 2.2
-6. `compare_files.py`         - HELPER: script to compare 2 files, writes differing lines to seperate files for analysis
-7. `count_annotations.py`     - HELPER: script to count the number of annotations in a file, with or without filtering applied
+2. `xenbase_gaf_driver.sh`    - DRIVER: script to build Xenbase GAF from GPI & GOA files
+3. `add_orthologs_driver.sh`  - DRIVER: script to add ortholog annotations to Xenbase GAF
+4. `get_files.py`             - MAIN: script to download various files used in pipeline
+5. `goa_parsing.py`           - MAIN: script used to parse through GOA GAF files, create Xenbase GAF, and find ortholog annotations
+6. `gaf2.2_mods.sh`           - MAIN: script used to modify Xenbase GAF output to be consistent with GAF version 2.2
+7. `compare_files.py`         - HELPER: script to compare 2 files, writes differing lines to seperate files for analysis
+8. `count_annotations.py`     - HELPER: script to count the number of annotations in a file, with or without filtering applied
 
 NOTE: The subfolder `original-pipeline` contains adapted version of the original GOA Pipeline bash/perl scripts. These were used to verify whether the `xenbase.gaf` outputs from both pipelines are identical when provided with the same input files.  
 
