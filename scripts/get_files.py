@@ -43,14 +43,14 @@ def set_folders():
 def download_goa(args):
     if args.xen_download:
         xtrop_url = "https://ftp.ebi.ac.uk/pub/contrib/goa/gp_association.8364_Xenopus_tropicalis.gaf.gz"
-        xtrop_path = os.path.join(gaf_dir, "original-goa", f"8364_Xenopus_tropicalis.{DATE}.gaf.gz")
+        xtrop_path = os.path.join(gaf_dir, "original-goa", "8364_Xenopus_tropicalis.gaf.gz")
         download_w_progress(xtrop_url, output_path=xtrop_path)
 
         xlaev_url = "https://ftp.ebi.ac.uk/pub/contrib/goa/gp_association.8355_Xenopus_laevis.gaf.gz"
-        xlaev_path = os.path.join(gaf_dir, "original-goa", f"8355_Xenopus_laevis.{DATE}.gaf.gz")
+        xlaev_path = os.path.join(gaf_dir, "original-goa", "8355_Xenopus_laevis.gaf.gz")
         download_w_progress(xlaev_url, output_path=xlaev_path)
 
-        xenopus_combined = os.path.join(gaf_dir, f"Xenopus.GOA.Curated.{DATE}.gaf")
+        xenopus_combined = os.path.join(gaf_dir, f"Xenopus.GOA.Curated.gaf")
         combine_annotations(xtrop_path, xlaev_path, xenopus_combined)
 
     elif args.ortho_download:
@@ -80,7 +80,7 @@ def extract_from_goa(species):
         taxon_list = species_taxon_map[target]
         taxon_pattern = r'\|'.join([f"taxon:{taxon}" for taxon in taxon_list])
 
-        output_file = f"{target.capitalize()}.GOA.Extracted.{DATE}.gaf"
+        output_file = f"{target.capitalize()}.GOA.Extracted.gaf"
         output_path = os.path.join(gaf_dir, output_file)
 
         try:
@@ -105,7 +105,7 @@ def download_xenbase(args):
         gpi_url = 'https://download.xenbase.org/xenbase/GenePageReports/xenbase.gpi.gz'
         gpi_filepath = os.path.join(xb_dir, "Xenbase.gpi.gz")
         download_w_progress(gpi_url, gpi_filepath)
-        unzip(gpi_filepath)
+        unzip(gpi_filepath, remove_og=True)
 
     if args.ortho_download:
         # Download genepage to gene ID map
@@ -131,7 +131,7 @@ def download_xenbase(args):
     gaf_url = 'https://download.xenbase.org/xenbase/GenePageReports/xenbase.gaf.gz'
     gaf_filepath = os.path.join(xb_dir, "Xenbase.gaf.gz")
     download_w_progress(gaf_url, gaf_filepath)
-    unzip(gaf_filepath)'''
+    unzip(gaf_filepath, remove_og=True)'''
 
 # FUNCTION: Download NCBI to uniprot mapping files for orthologs
 # Contains uniprot URL
@@ -158,7 +158,7 @@ def download_maps():
         # chunk size = <BYTE SIZE> (To modify number of bytes streamed in a chunk during download; default = 10*1024*1024 (10MB))
 
         download_w_progress(url, map_zipped)
-        unzip(map_zipped, line_filter=lambda line: "GeneID" in line)
+        unzip(map_zipped, remove_og=True, line_filter=lambda line: "GeneID" in line)
 
 # FUNCTION: Show progress while downloading
 def download_w_progress(url, output_path, chunk_size=10*1024*1024):
@@ -181,7 +181,7 @@ def download_w_progress(url, output_path, chunk_size=10*1024*1024):
     tqdm.write(f"Saved to {os.path.basename(output_path)}!\n")
 
 # FUNCTION: Unzip .gz file; Removes .gz from filename if new filename not specified
-def unzip(filepath, out_file=None, line_filter=None):
+def unzip(filepath, out_file=None, remove_og=False, line_filter=None):
     if not out_file:
         outpath = filepath.removesuffix(".gz")
     else:
@@ -197,7 +197,8 @@ def unzip(filepath, out_file=None, line_filter=None):
         else:
             shutil.copyfileobj(in_file, out_file)
 
-    os.remove(filepath)
+    if remove_og:
+        os.remove(filepath)
     print(f"Extracted to {outpath}!\n")
     return outpath
 
@@ -222,7 +223,6 @@ if __name__ == "__main__":
     parser.add_argument('--xen_download', action='store_true')
     parser.add_argument('--ortho_download', action='store_true')
     parser.add_argument('--extract', nargs='?', const='all', help='Species name or "all"')
-    parser.add_argument('--date', help='Optional date in YYYY-MM-DD format (Use if regenerating species-specific GAFs from older GOA download)')
     parser.add_argument('--log', action='store_true')
     args = parser.parse_args()
 
@@ -247,8 +247,7 @@ if __name__ == "__main__":
 
     # Set date and downloaded GOA filename
     print(f"Date & time of script execution: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}")
-    DATE = args.date if args.date else datetime.today().strftime('%Y-%m-%d')
-    GOA_FILENAME = f"goa_uniprot_all.{DATE}.gaf.gz"
+    GOA_FILENAME = f"goa_uniprot_all.gaf.gz"
 
     # Set species to taxon map:
     species_taxon_map = {
@@ -266,9 +265,8 @@ if __name__ == "__main__":
         download_goa(args)
         download_xenbase(args)
         if args.ortho_download:
+            extract_from_goa("all")
             download_maps(args)
 
     elif args.extract:
-        if args.date:
-            print(f"Download date of GOA file to extract species GAFs from: {DATE}")
         extract_from_goa(args.extract)

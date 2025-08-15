@@ -30,22 +30,16 @@ from datetime import date, datetime
 # ---------------------------------------- Main Functions ----------------------------------------
 
 # FUNCTION: Main function to create xenbase GAF
-def main_gaf(dl_date):
-    # Date xenopus files were downloaded/extracted
-    print(f"Download date of xenopus GOA file used: {dl_date}")
-
+def main_gaf():
     # Populate Xenopus maps
-    xenopus_gaf = os.path.join(gaf_dir, f'Xenopus.GOA.Curated.{dl_date}.gaf')
+    xenopus_gaf = os.path.join(gaf_dir, f'Xenopus.GOA.Curated.gaf')
     populate_maps(xenopus_gaf)
 
     # Create Xenbase GAF from GPI & GOA
     create_xenbase_gaf(xenopus_gaf, output_dir)
 
 # FUNCTION: Main function to add ortholog 'ISO' annotations into xenbase GAF
-def main_ortho(dl_date, ortho_species):
-    # Date ortholog GOA files were downloaded/extracted
-    print(f"Download date of ortholog GOA files used: {dl_date}")
-
+def main_ortho(ortho_species):
     # Split post-noctua xenbase gaf into x.trop & x.laev files                  # CHECK!!: noctua output may need unzipping first
     xenbase_gaf = os.path.join(output_dir, "xenbase.EBI.only.2.2.gaf")          # FIX!!: Change to noctua output filename if different
     populate_maps(xenbase_gaf, split=True)
@@ -63,7 +57,7 @@ def main_ortho(dl_date, ortho_species):
         print(f"\n--------------- Processing {species} Ortholog Annotations ---------------")
 
         # Filter ortholog GAF files to remove invalid evidence codes before populating maps
-        gaf_suffix = f'GOA.Extracted.{dl_date}.gaf'
+        gaf_suffix = f'GOA.Extracted.gaf'
         ortho_gaf = os.path.join(gaf_dir, f'{species}.{gaf_suffix}')
         filter_gaf(ortho_gaf, create_copy=True, filter_col=6, filter_values=allowed_codes)        
 
@@ -460,9 +454,8 @@ def create_xenbase_gaf(gaf_in, output_dir, zip=True):
     clean(matched, header_lines=26, dedup=True, sort=True, sort_cols=[2,4])                 # dedup_cols=[1,2,3,4,5,6,7]
     clean(provenance, dedup=True, sort=True, sort_cols=[2,4])
 
-    # Optional: zip output
+    # Optional: zip provenance & unmatched files
     if zip:
-        gzip_file(matched)
         gzip_file(provenance, delete_input=True)
         gzip_file(unmatched, delete_input=True)
 
@@ -694,7 +687,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--create_gaf', action='store_true')
     parser.add_argument('--add_orthos', nargs='?', help='List of ortholog species to process')
-    parser.add_argument('--date', nargs='?', help='Date of download for files used')
+    #parser.add_argument('--date', nargs='?', help='Date of download for files used')
     parser.add_argument('--log', action='store_true')
     args = parser.parse_args()
 
@@ -744,14 +737,14 @@ if __name__ == "__main__":
     ortho_uniprot_map = {}              # key = ortholog uniprot id: contains ncbi id & go ids
 
     # Set file download date to today if no date flag was provided
-    dl_date = args.date if args.date else datetime.today().strftime('%Y-%m-%d')
+    #dl_date = args.date if args.date else datetime.today().strftime('%Y-%m-%d')
     print(f"\nDate & time of script execution: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}")
     
     if args.create_gaf:
-        main_gaf(dl_date)
+        main_gaf()
     elif args.add_orthos:
         ortho_species = ast.literal_eval(args.add_orthos)
-        main_ortho(dl_date, ortho_species)
+        main_ortho(ortho_species)
     else:
         print("""Error: Must specify processing option:
         --create_gaf    -> Use to create xenbase GAF from EBI's GOA files

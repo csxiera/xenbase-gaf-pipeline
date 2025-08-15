@@ -2,23 +2,35 @@
 This repository contains scripts for building Gene Ontology Annotation files for Xenopus. Annotations for both Xenopus laevis and Xenopus tropicalis are sourced from the GO Central repository and linked to Xenbase using gene entity identifiers (XB-GENE-IDs). Ortholog annotations are also identified and included in GAF output as 'ISO' annoations. Ortholog species include: human, mouse, rat, chicken, zebrafish, and drosophila
 
 ## Scripts
-1. `Xenbase_gaf_driver.sh`    - DRIVER: script to run GAF pipeline
-2. `get_files.py`             - MAIN: script to download various files used in pipeline
-3. `goa_parsing.py`           - MAIN: script used to parse through GOA GAF files, create Xenbase GAF, and find ortholog annotations
-4. `compare_files.py`         - HELPER: script to compare 2 files, writes differing lines to seperate files for analysis
-5. `count_annotations.py`     - HELPER: script to count the number of annotations in a file, with or without filtering applied
+1. `run_pipeline.yaml`        - DRIVER: script to run full pipeline
+1. `xenbase_gaf_driver.sh`    - DRIVER: script to build Xenbase GAF from GPI & GOA files
+2. `add_orthologs_driver.sh`  - DRIVER: script to add ortholog annotations to Xenbase GAF
+3. `get_files.py`             - MAIN: script to download various files used in pipeline
+4. `goa_parsing.py`           - MAIN: script used to parse through GOA GAF files, create Xenbase GAF, and find ortholog annotations
+5. `gaf2.2_mods.sh`           - MAIN: script used to modify Xenbase GAF output to be consistent with GAF version 2.2
+6. `compare_files.py`         - HELPER: script to compare 2 files, writes differing lines to seperate files for analysis
+7. `count_annotations.py`     - HELPER: script to count the number of annotations in a file, with or without filtering applied
 
 NOTE: The subfolder `original-pipeline` contains adapted version of the original GOA Pipeline bash/perl scripts. These were used to verify whether the `xenbase.gaf` outputs from both pipelines are identical when provided with the same input files.  
 
-More detailed information about each program is found in the script itself
+More detailed information about each program is found in the script itself. Project flow can be viewed in `Pipeline Flowchat.png`
 
 ## Running Pipeline
-Xenbase_gaf_driver.sh should be set up to use the current date, with GET_FILES = true when used in a cron job  
-- To rerun GAF pipeline without redownloading files, change current date to previous download date and set GET_FILES = false  
+Pipeline is designed to run via `run_pipeline.yaml`, which will:  
+1. Build Xenbase GAF on scheduled or manual trigger
+2. Add orthologs to the post-NOCTUA Xenbase gaf once pushed to pipeline
 
-Input folder structure is set up in `get_files.py`. Output folder structure is set up in `goa_parsing.py`. Program expects `xenbase-gaf-pipeline` project folder to be in HOME directory  
+The drivers called in the yaml script download different files:
+- `xenbase_gaf_driver.sh` downloads both X.trop and X.laev GOA files and the Xenbase GPI file
+- `add_orthologs_driver.sh` downloads the full GOA file (& extracts into species-specific GOA files), all ncbi mapping files, and the Xenbase genepage to gene id mapping file  
+NOTE: The Xenbase GPI file is required to add ortholog annotations, therefore it is assumed that `xenbase_gaf_driver.sh` has already run and downloaded that file
 
-Helper scripts are designed to be run as standalone programs. The `__main__` section contains example calls demonstrating how to call the helper functions for different usages.
+Both `xenbase_gaf_driver.sh` and `add_orthologs_driver.sh` should be set up with `GET_FILES = true`
+- For testing purposes: to rerun GAF pipeline without redownloading files, set `GET_FILES = false ` 
+
+Input folder structure is set up in `get_files.py`. Output folder structure is set up in `goa_parsing.py`. Program expects `xenbase-gaf-pipeline` repo folder to be in `HOME` directory  
+
+Helper scripts are designed to be run as standalone programs for testing purposes. The `__main__` section contains example calls demonstrating how to call the helper functions for different usages.
 
 ## Input/Output
 

@@ -36,6 +36,9 @@ awk -F'\t' 'BEGIN{OFS="\t"}{if($5=="GO:0051260" && ($7=="ISS"||$7=="ISA"||$7=="I
 grep -a '^!' "$input_gaf" > "$output_gaf"
 sort "$tmp" | uniq >> "$output_gaf"
 
+# Create zipped output
+gzip -c "$output_gaf" > "$output_gaf.gz"
+
 # Clean up
 rm "$tmp"
 rm "$input_gaf"
