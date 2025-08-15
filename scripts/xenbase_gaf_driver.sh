@@ -5,7 +5,7 @@ VENV_HOME="$HOME/myenv"    # Modify path to point to virtual environment directo
 source $VENV_HOME/bin/activate
 
 # Set to false if file download not required
-GET_FILES=false
+GET_FILES=true
 
 # -------------------- Download Files -------------------
 
