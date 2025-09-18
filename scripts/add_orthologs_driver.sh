@@ -1,5 +1,5 @@
 #!/bin/bash
-# Driver for adding ortholog annotatiosn to post-NOCTUA xenbase gaf
+# Driver for adding ortholog annotations to post-NOCTUA xenbase gaf
 
 VENV_HOME="$HOME/myenv"     # Modify path to point to virtual environment directory
 source $VENV_HOME/bin/activate
