@@ -100,12 +100,11 @@ def extract_from_goa(species):
 def download_xenbase(args):
     print("Downloading Xenbase files...")
 
-    if args.xen_download:
-        # Download GPI file & unzip
-        gpi_url = 'https://download.xenbase.org/xenbase/GenePageReports/xenbase.gpi.gz'
-        gpi_filepath = os.path.join(xb_dir, "Xenbase.gpi.gz")
-        download_w_progress(gpi_url, gpi_filepath)
-        unzip(gpi_filepath, remove_og=True)
+    # Download GPI file & unzip (needed by both gaf creation and ortholog addition pipelines)
+    gpi_url = 'https://download.xenbase.org/xenbase/GenePageReports/xenbase.gpi.gz'
+    gpi_filepath = os.path.join(xb_dir, "Xenbase.gpi.gz")
+    download_w_progress(gpi_url, gpi_filepath)
+    unzip(gpi_filepath, remove_og=True)
 
     if args.ortho_download:
         # Download genepage to gene ID map

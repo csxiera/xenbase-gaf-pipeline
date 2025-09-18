@@ -41,7 +41,7 @@ def main_gaf():
 # FUNCTION: Main function to add ortholog 'ISO' annotations into xenbase GAF
 def main_ortho(ortho_species):
     # Split post-noctua xenbase gaf into x.trop & x.laev files                  # CHECK!!: noctua output may need unzipping first
-    xenbase_gaf = os.path.join(output_dir, "xenbase.EBI.only.2.2.gaf")          # FIX!!: Change to noctua output filename if different
+    xenbase_gaf = os.path.join(output_dir, "xenbase.gaf")                       # FIX!!: Change to noctua output filename if different
     populate_maps(xenbase_gaf, split=True)
     split_xenbase_gaf(xenbase_gaf, output_dir, zip=True)
 
