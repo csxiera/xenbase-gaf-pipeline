@@ -1,0 +1,25 @@
+stages:
+  - test-1
+  - test-2
+
+test-manual:
+  stage: test-1
+  script:
+  - echo “This job tests manual/scheduled trigger”
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+      when: manual
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: on_success
+    - when: never
+
+test-changes:
+  stage: test-2
+  script:
+  - echo “This job tests a file change trigger”
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+      changes:
+        - output-files/test.txt
+      when: always
+    - when: never

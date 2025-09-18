@@ -1,0 +1,47 @@
+stages: 
+  - build_files
+  - add_orthos
+  
+build_gaf:
+  stage: build_files
+  script:
+    - cd ~/
+    - pwd
+    - bash setup.sh $CI_PROJECT_PATH $CI_COMMIT_REF_NAME
+    - cd $CI_PROJECT_PATH/$CI_COMMIT_REF_NAME
+    - pwd
+    - git reset --hard origin/master
+    - git pull
+    - bash scripts/xenbase_gaf_driver.sh
+    - sudo -S cp output-files/*enbase.EBI* /data/ftp/pub/DataExchange/GO/
+    - sudo -S cp output-files/*annotation* /data/ftp/pub/DataExchange/GO/
+    - git add output-files/*                          # Add main output files, excluding those in sub dirs
+    - git commit -m "[skip ci] automated upload from gaf creation pipeline"
+    - git push
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+      when: manual
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: on_success
+    - when: never
+
+add_ortholog_annotations:
+  stage: add_orthos
+  script:
+    - cd ~/
+    - pwd
+    - bash setup.sh $CI_PROJECT_PATH $CI_COMMIT_REF_NAME
+    - cd $CI_PROJECT_PATH/$CI_COMMIT_REF_NAME
+    - pwd
+    - git reset --hard origin/master
+    - git pull
+    - bash scripts/add_orthologs_driver.sh
+    - git add output-files/xenbase.{x*,plus.*}.gaf      # Split xenopus gafs & xenbase plus ortholog gafs
+    - git commit -m "[skip ci] automated upload from ortholog addition pipeline"
+    - git push
+  rules:              
+    - if: '$CI_PIPELINE_SOURCE == "push"'   # Should only trigger this stage once the xenbase.gaf (assumed noctua output file) is added/modified on repo
+      changes:
+        - output-files/xenbase.gaf          # CHECK!!: change this to noctua output filename if different
+      when: always
+    - when: never
